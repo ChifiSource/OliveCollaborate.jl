@@ -1,4 +1,4 @@
-<div align="center"><img width="250" src="https://github.com/ChifiSource/image_dump/blob/main/olive/olivecollaborate.png">
+<div align="center"><img width="250" src="https://github.com/ChifiSource/image_dump/raw/main/olive/0.1/extensions/olivecollaborate.png">
 </img></div>
 
 - **collaborative sessions for olive!**

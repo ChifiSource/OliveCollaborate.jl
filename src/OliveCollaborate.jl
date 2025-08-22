@@ -116,22 +116,22 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
     poweron[:align] = "center"
     on(c, poweron, "click") do cm2::ComponentModifier
         env = c[:OliveCore].users[getname(c)].environment
-        hostprojs = Vector{Olive.Project{<:Any}}(filter!(d -> ~(d.id == proj.id), [begin
+        hostprojs = Vector{Olive.Project{<:Any}}([begin
             np = Project{:rpc}(p.name)
             np.data = p.data
             np.data[:host] = ol_user
             np.id = p.id
             np::Project{:rpc}
-        end for p in env.projects]))
-        for pro in projs
-            Olive.close_project(c, cm2, pro)
+        end for p in filter(d -> ~(d.id == proj.id), env.projects)])
+        for project in env.projects
+            Olive.close_project(c, cm2, project)
         end
         env.projects = hostprojs
         for pro in hostprojs
             Olive.open_project(c, cm2, pro, build_tab(c, pro))
         end
         push!(hostprojs, proj)
-        proj.data[:host] = get_session_key(c)
+        proj.data[:host] = ToolipsSession.get_session_key(c)
         proj.data[:active] = true
         open_rpc!(c, cm2, tickrate = 120)
         Olive.olive_notify!(cm2, "collaborative session now active")
@@ -179,7 +179,7 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
         tabbody[:class]::String = "tabclosed"
     end
     rpc_scrf = cm::ComponentModifier -> begin
-        if ~(is_active in keys(p.data))
+        if ~(:active in keys(p.data))
             @info "canceled rpc join, no active in keys"
             return
         end
@@ -199,7 +199,14 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
                 end
             # if host
             else
-
+                open_rpc!(c, cm)
+                splits = split(cell.outputs, ";")
+                ind = findfirst(n -> split(n, "|")[1] == getname(c), splits)
+                data = splits[ind]
+                color = split(data, "|")[4]
+                call!(c, cm) do cm2::ComponentModifier
+                    Olive.olive_notify!(cm2, "$(getname(c)) has joined !", color = string(color))
+                end
             end
         else
             @info "skipped rpc join, proj not active"
@@ -219,7 +226,7 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
         inpane = findall(proj::Project{<:Any} -> proj[:pane] == p[:pane], projects)
         [begin
             if projects[e].id != p.id 
-                style_tab_closed!(cm, projects[e])
+                Olive.style_tab_closed!(cm, projects[e])
             end
             nothing
         end  for e in inpane]
@@ -266,7 +273,7 @@ slightly redesign this -- this function will become the `collaborators` project'
 end==#
 
 function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
-    keybindings = c[:OliveCore].client_data[Olive.getname(c)]["keybindings"]
+    keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
     km = ToolipsSession.KeyMap()
     cells = proj[:cells]
     ToolipsSession.bind(km, keybindings["save"], prevent_default = true) do cm::ComponentModifier
@@ -305,7 +312,7 @@ function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
 end
 
 function cell_bind!(c::Connection, cell::Cell{:getstarted}, proj::Project{:rpc})
-    keybindings = c[:OliveCore].client_data[Olive.getname(c)]["keybindings"]
+    keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
     km = ToolipsSession.KeyMap()
     cells = proj[:cells]
     ToolipsSession.bind(km, keybindings["save"], prevent_default = true) do cm::ComponentModifier
@@ -341,7 +348,7 @@ function cell_bind!(c::Connection, cell::Cell{:getstarted}, proj::Project{:rpc})
 end
 
 function get_collaborator_data(c::Connection, proj::Project{:rpc})
-    projs = c[:OliveCore].open[proj[:host]].projects
+    projs = c[:OliveCore].users[proj[:host]].environment.projects
     pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
     rpcinfo_proj = projs[pf]
     allinfo = rpcinfo_proj[:cells][1].outputs
@@ -353,13 +360,12 @@ end
 function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpc})
     windowname::String = proj.id
     curr = cm["cell$(cell.id)"]["text"]
-    curr_raw = cm["rawcell$(cell.id)"]["text"]
     cursorpos = parse(Int64, cm["cell$(cell.id)"]["caret"])
     cell.source = curr
     if length(cell.source) == 0
         return
     end
-    tm = c[:OliveCore].client_data[getname(c)]["highlighters"]["julia"]
+    tm = c[:OliveCore].users[getname(c)].data["highlighters"]["julia"]
     tm.raw = curr
     OliveHighlighters.mark_julia!(tm)
     set_text!(cm, "cellhighlight$(cell.id)", string(tm))

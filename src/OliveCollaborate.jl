@@ -13,7 +13,7 @@ function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite}
         cells = Vector{Cell}([
         Cell("collab", " ","$(getname(c))|no|all|#e75480")])
         projdict = Dict{Symbol, Any}(:cells => cells, :env => "",
-        :ishost => true)
+        :ishost => true, :addtype => :collablink)
         inclproj = Project{:collab}("collaborators", projdict)
         push!(c[:OliveCore].users[getname(c)].environment.projects, inclproj)
         tab = build_tab(c, inclproj)
@@ -84,37 +84,35 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
 end
 
 function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any}, fweight ...)
-    add_person = div("addcollab")
+    add_person = div("addcollab", align = "right")
     style!(add_person, "padding" => 0px, "border-radius" => 0px, "display" => "flex", "min-width" => 100percent, 
     "border-bottom-left-radius" => 5px, "border-bottom-right-radius" => 5px, "flex-direction" => "row", "overflow" => "hidden")
-    nametag = a("addname", text = "", contenteditable = true)
-    style!(nametag, "background-color" => "#18191A", "color" => "white", "border-radius" => 0px, 
-    "width" => 30percent, "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", fweight ...)
-    perm_opts = Vector{Servable}(
-        [Components.option(opt, text = opt) for opt in ["all", "askall", "view", "askswitch"]]
-    )
-    perm_selector = Components.select("permcollab", perm_opts)
-    perm_selector[:value] = "all"
-    style!(perm_selector, "height" => 100percent, "width" => 100percent)
-    perm_container = a("permcont", align = "center")
-    style!(perm_container, "width" => 20percent,  "background-color" => "#242526", fweight ...)
-    push!(perm_container, perm_selector)
-    color_selector = Components.colorinput("colorcollab", value = "#498437")
-    style!(color_selector, "-webkit-appearance" => "none", "moz-appearance" => "none", "appearance" => "none", 
-    "background-color" => "transparent", "pointer" => "cursor", "width" => 100percent, "height" => 100percent, "border" => "none")
-    colorcont = a("colorcont", align = "center")
-    push!(colorcont, color_selector)
-    style!(colorcont, "background-color" => "#242526", "width" => 40percent, fweight ...)
     addbox = Olive.topbar_icon("collabadder", "add_box")
     addbox[:align] = "center"
     ol_user::String = getname(c)
     on(c, addbox, "click") do cm2::ComponentModifier
-        
+        if ~(proj[:active])
+            Olive.olive_notify!(cm2, "collaborative session must be active first")
+            return
+        elseif ~(proj[:ishost])
+            return
+        elseif length(proj[:cells]) > 1
+            return
+        end
+        newcell = Cell{proj[:addtype]}("")
+        push!(proj[:cells], newcell)
+        append!(cm2, proj.id, build(c, cm2, newcell, proj))
     end
     style!(addbox, "background-color" => "darkorange", "color" => "white", "width" => 5percent, fweight ...)
     poweron = Olive.topbar_icon("collabon", "power_settings_new")
     poweron[:align] = "center"
     on(c, poweron, "click") do cm2::ComponentModifier
+        if ~(proj[:ishost])
+            return
+        end
+        if proj[:active]
+            return
+        end
         env = c[:OliveCore].users[getname(c)].environment
         hostprojs = Vector{Olive.Project{<:Any}}([begin
             np = Project{:rpc}(p.name)
@@ -142,8 +140,16 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
        powerbg = "white"
     end
     style!(poweron, "background-color" => "#242526", "color" => powerbg, "width" => 5percent, fweight ...)
-    add_person[:children] = [nametag, perm_container, colorcont, addbox, poweron]
+    add_person[:children] = [addbox, poweron]
     add_person
+end
+
+function make_collab_str(ishost::Bool, name::String, perm::Any, color::String)
+    fill = "no"
+    if ishost
+        fill = "yes"
+    end
+    ";$name|$fill|$perm|$colr"
 end
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any})
@@ -172,6 +178,21 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::
     outercell::Component{:div}
 end
 
+function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, proj::Project{<:Any})
+    cellid = cell.id
+    nametag = a("cell$cellid", text = "", contenteditable = true)
+    style!(nametag, "background-color" => "#18191A", "color" => "white", "border-radius" => 0px, 
+    "width" => 30percent, "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box")
+    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ["all", "askall", "read only"]])
+    perm_selector = Components.select("permcollab", perm_opts)
+    perm_selector[:value] = "all"
+    style!(perm_selector, "height" => 100percent, "width" => 100percent)
+    perm_container = a("permcont", align = "center")
+    style!(perm_container, "width" => 20percent,  "background-color" => "#242526")
+    push!(perm_container, perm_selector)
+    div("cellcontainer$cellid", children = [nametag, perm_container])
+end
+
 function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
     fname::String = p.id
     tabbody::Component{:div} = div("tab$(fname)", class = "tabopen")
@@ -186,8 +207,9 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
         is_active::Bool = p.data[:active]
         # check if rpc is open
         if is_active
-        # if peer
-            if ~(proj[:ishost])
+            # if peer
+            cell = p[:cells][1]
+            if ~(p[:ishost])
             @warn "joining rpc"
                 join_rpc!(c, cm, p.data[:host])
                 splits = split(cell.outputs, ";")
@@ -199,6 +221,7 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
                 end
             # if host
             else
+                @warn "rejoining host rpc"
                 open_rpc!(c, cm)
                 splits = split(cell.outputs, ";")
                 ind = findfirst(n -> split(n, "|")[1] == getname(c), splits)
@@ -233,9 +256,6 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
         projbuild::Component{:div} = build(c, cm, p)
         set_children!(cm, "pane_$(p[:pane])", [projbuild])
         cm["tab$(fname)"] = :class => "tabopen"
-        if length(p.data[:cells]) > 0
-            focus!(cm, "cell$(p[:cells][1].id)")
-        end
     end
     on(c, tabbody, "dblclick") do cm::ComponentModifier
         if "$(fname)dec" in cm

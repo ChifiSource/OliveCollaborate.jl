@@ -103,7 +103,7 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
         push!(proj[:cells], newcell)
         append!(cm2, proj.id, build(c, cm2, newcell, proj))
     end
-    style!(addbox, "background-color" => "darkorange", "color" => "white", "width" => 5percent, fweight ...)
+    style!(addbox, "background-color" => "darkorange", "color" => "white", "width" => 50percent, fweight ...)
     poweron = Olive.topbar_icon("collabon", "power_settings_new")
     poweron[:align] = "center"
     on(c, poweron, "click") do cm2::ComponentModifier
@@ -139,17 +139,13 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
     else
        powerbg = "white"
     end
-    style!(poweron, "background-color" => "#242526", "color" => powerbg, "width" => 5percent, fweight ...)
-    add_person[:children] = [addbox, poweron]
+    style!(poweron, "background-color" => "#242526", "color" => powerbg, "width" => 50percent, fweight ...)
+    add_person[:children] = [poweron, addbox]
     add_person
 end
 
-function make_collab_str(ishost::Bool, name::String, perm::Any, color::String)
-    fill = "no"
-    if ishost
-        fill = "yes"
-    end
-    ";$name|$fill|$perm|$colr"
+function make_collab_str(name::String, perm::Any, color::String)
+    ";$name|no|$perm|$colr"
 end
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any})
@@ -182,7 +178,7 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
     cellid = cell.id
     nametag = a("cell$cellid", text = "", contenteditable = true)
     style!(nametag, "background-color" => "#18191A", "color" => "white", "border-radius" => 0px, 
-    "width" => 30percent, "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box")
+        "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 5percent)
     perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ["all", "askall", "read only"]])
     perm_selector = Components.select("permcollab", perm_opts)
     perm_selector[:value] = "all"
@@ -190,7 +186,55 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
     perm_container = a("permcont", align = "center")
     style!(perm_container, "width" => 20percent,  "background-color" => "#242526")
     push!(perm_container, perm_selector)
-    div("cellcontainer$cellid", children = [nametag, perm_container])
+    colorbox = Components.colorinput("colcont", value = "#efe1ed")
+    completer = button("adduser", text = "add")
+    on(c, completer, "click") do cm2::ComponentModifier
+        name = cm2[nametag]["text"]
+        if name == ""
+            Olive.olive_notify!(cm2, "you must name a new collaborator", color = "red")
+            return
+        elseif ~(proj[:active])
+            Olive.olive_notify!(cm2, "cannot add to inactive session !", color = "red")
+            return
+        end
+        perm = cm2[perm_selector]["value"]
+        colr = cm2[colorbox]["value"]
+        pers = "$name|no|$perm|$colr"
+        infocell = proj[:cells][1]
+        infocell.outputs = infocell.outputs * ";$pers"
+        host_user = c[:OliveCore].users[Olive.getname(c)]
+        projs = host_user.environment.projects
+        key = ToolipsSession.gen_ref(4)
+        push!(c[:OliveCore].keys, key => name)
+        env::Environment = Environment("olive")
+        env.pwd = host_user.environment.pwd
+        env.directories = host_user.environment.directories
+        host_n = host_user.name
+        for p in filter(d -> ~(d.id == proj.id), projs)
+            np = Project{:rpc}(p.name)
+            np.data = p.data
+            np.data[:host] = host_n
+            np.id = p.id
+            push!(env.projects, np)
+        end
+        newcollab = Project{:collab}(proj.name)
+        newcollab.data = copy(proj.data)
+        newcollab.data[:ishost] = false
+        new_data = Dict{String, Any}("group" => host_user.data["group"])
+        push!(env.projects, newcollab)
+        newuser = Olive.OliveUser{:olive}(name, "", env, new_data)
+        Olive.init_user(newuser)
+        newuser.key = key
+        push!(c[:OliveCore].users, newuser)
+        fweight = ("font-weight" => "bold", "font-size" => 13pt)
+        box = build_collab_preview(c, cm2, pers, proj, ignorefirst = true, 
+            fweight ...)
+        insert!(cm2, "colabstatus", 2, box[1])
+        Olive.olive_notify!(cm2, "collaborator $name added to session", color = colr)
+    end
+    retiv = div("cellcontainer$cellid", children = [nametag, perm_container, colorbox, completer])
+    style!(retiv, "display" => "flex")
+    retiv
 end
 
 function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)

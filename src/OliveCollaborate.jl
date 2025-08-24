@@ -372,25 +372,28 @@ function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
         rpc!(c, cm2)
     end
     ToolipsSession.bind(km, keybindings["evaluate"]) do cm2::ComponentModifier
-        session = c[:Session]
-        mock_ses = ToolipsSession.MockSession(session)
-        tempdata = Dict{Symbol, Any}(:Session => mock_ses, :OliveCore => c[:OliveCore])
-        newcon = Connection(c.stream, tempdata, Vector{Toolips.Route}(), get_ip(c))
-        Olive.evaluate(newcon, cm2, cell, proj)
-        newcon.data = c.data
-        host_event = ToolipsSession.find_host(c)
-        newevents = first(mock_ses.new_events)[2]
-        for client in host_event.clients
-            push!(session.events[client], newevents ...)
+        cellid::String = cell.id
+        if "load$(cellid)" in cm2
+            return
+        end
+        icon = Olive.olive_loadicon()
+        icon.name = "load$cellid"
+        icon["width"] = "16"
+        proj.data[:mod].WD = CORE.users[getname(c)].environment.pwd
+        append!(cm2, "cellside$(cellid)", icon)
+        on(c, cm2, 100) do cm2::ComponentModifier
+            Olive.evaluate(c, cm2, cell, proj)
+            remove!(cm2, "load$cellid")
+            rpc!(c, cm2)
         end
         rpc!(c, cm2)
     end
 
     ToolipsSession.bind(km, keybindings["focusup"]) do cm::ComponentModifier
-        Olive.focus_up!(c, cm, cell, cells, proj)
+        Olive.focus_up!(c, cm, cell, proj)
     end
     ToolipsSession.bind(km, keybindings["focusdown"]) do cm::ComponentModifier
-        Olive.focus_down!(c, cm, cell, cells, proj)
+        Olive.focus_down!(c, cm, cell, proj)
     end
     km::ToolipsSession.KeyMap
 end
@@ -467,16 +470,15 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
             newcon = Connection(c.stream, tempdata, Vector{Toolips.Route}(), get_ip(c))
             key = ToolipsSession.get_session_key(c)
             for client in host_event.clients
-                @info "loaded $client cell"
                 if client == key
                     continue
                 end
                 newcon[:SESSIONKEY] = client
                 insert!(cm2, windowname, pos, build(newcon, cm2, new_cell, proj))
+                remove!(cm2, buttonbox)
                 push!(session.events[client], mock_ses.new_events[client] ...)
                 call!(c, cm2, client)
             end
-            @info "finished loop"
             remove!(cm2, buttonbox)
             deleteat!(cells, pos)
             insert!(cells, pos, new_cell)

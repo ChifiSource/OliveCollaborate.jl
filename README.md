@@ -1,6 +1,17 @@
-<div align="center"><img width="250" src="https://github.com/ChifiSource/image_dump/blob/main/olive/olivecollaborate.png">
+<div align="center"><img width="250" src="https://github.com/ChifiSource/image_dump/raw/main/olive/0.1/extensions/olivecollaborate.png">
 </img></div>
 
 - **collaborative sessions for olive!**
-
+- [documentation](https://chifidocs.com/olive/OliveCollaborate.jl)
 `OliveCollaborate` provides *multi-user RPC sessions* for `Olive` notebooks. This functionality gives users connected to the same server the ability to share their sessions actively -- as one user modifies the project, the project updates for everyone else viewing the project. This project is still in *relatively early* development, but is coming surprisingly soon!
+##### notes
+- This extension will only allow you to share with other users via LAN or your own networking.
+- You can remove the `collaborate` icon  by adding `collabicon = false` to your `OliveCore`. The user addition system is slightly mutable, as we can change how users are added by creating our user-addition own cell type and path to adding the collaborate project. More information in [adding users](#adding-users).
+- Cell compatibility *is* limited, but this is *mainly* just the case for highlighting and filling. Highlight bindings have to be specifically tailored for RPC -- this project only binds the 'CORE' `Olive` cells -- `:code`, `:tomlvalues`, and `:markdown`. This could easily be expanded with extensions.
+##### adding
+`OliveCollaborate` is added like any other `Olive` extension. In order to load the extension, either add `using OliveCollaborate` to your `olive.jl` or call `using OliveCollaborate` *before* starting `Olive`. Make sure the package is in your `olive` or global environment, as well, by adding it:
+```julia
+using Pkg; Pkg.add("OliveCollaborate")
+```
+##### configuration
+

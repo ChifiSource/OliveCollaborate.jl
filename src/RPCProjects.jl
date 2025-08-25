@@ -214,6 +214,11 @@ function cell_bind!(c::Connection, cell::Cell{:getstarted}, proj::Project{:rpc})
 end
 
 function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpc})
+    do_inner_rpc_highlight(OliveHighlighters.mark_julia!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["julia"])
+end
+
+function do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, 
+        cm::ComponentModifier, tm::Olive.Highlighter)
     windowname::String = proj.id
     curr = cm["cell$(cell.id)"]["text"]
     cursorpos = parse(Int64, cm["cell$(cell.id)"]["caret"])
@@ -221,9 +226,8 @@ function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}
     if length(cell.source) == 0
         return
     end
-    tm = c[:OliveCore].users[getname(c)].data["highlighters"]["julia"]
     set_text!(tm, curr)
-    OliveHighlighters.mark_julia!(tm)
+    f(tm)
     set_text!(cm, "cellhighlight$(cell.id)", string(tm))
     if cursorpos == 0
         curspos = 1
@@ -242,4 +246,15 @@ function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}
         set_text!(cm2, "cellhighlight$(cell.id)", hltxt)
         set_text!(cm2, "cell$(cell.id)", curr)
     end
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:markdown}, proj::Project{:rpc})
+    if cm["cell$(cell.id)"]["contenteditable"] == "false"
+        return
+    end
+    do_inner_rpc_highlight(OliveHighlighters.mark_markdown!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["markdown"])
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpc})
+    do_inner_rpc_highlight(OliveHighlighters.mark_toml!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["toml"])
 end

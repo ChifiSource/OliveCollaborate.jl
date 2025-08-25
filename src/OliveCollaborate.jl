@@ -337,16 +337,6 @@ end
 rpc projects
 ==#
 
-#== TODO
-slightly redesign this -- this function will become the `collaborators` project's 
-`build` function. Along with the tab below it. (this way `join/open_rpc!` only 
-    gets called once.) 
-==#
-
-#==function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
-
-end==#
-
 function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
     keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
     km = ToolipsSession.KeyMap()
@@ -368,8 +358,18 @@ function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
         rpc!(c, cm2)
     end
     ToolipsSession.bind(km, keybindings["new"]) do cm2::ComponentModifier
-        Olive.cell_new!(c, cm2, cell, proj)
-        rpc!(c, cm2)
+        pos = findfirst(lcell -> lcell.id == cell.id, cells)
+        creator_cell = Cell{:creator}()
+        if pos == length(cells)
+            push!(cells, creator_cell)
+        else
+            insert!(cells, pos + 1, creator_cell)
+        end
+        callcell = Cell{:callcreator}(Olive.getname(c), id = creator_cell.id)
+        insert!(cm2, proj.id, pos + 1, build(c, cm2, callcell, proj))
+        call!(c, cm2)
+        insert!(cm2, proj.id, pos + 1, build(c, cm2, creator_cell, proj))
+        focus!(cm2, "cell$(creator_cell.id)")
     end
     ToolipsSession.bind(km, keybindings["evaluate"]) do cm2::ComponentModifier
         cellid::String = cell.id
@@ -419,6 +419,17 @@ function get_collaborator_data(c::Connection, proj::Project{:rpc})
     split(splitinfo[just_me], "|")::Vector{SubString{String}}
 end
 
+function get_collaborator_data(c::Connection, name::String, proj::Project{:rpc})
+    projs = c[:OliveCore].users[proj[:host]].environment.projects
+    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
+    rpcinfo_proj = projs[pf]
+    allinfo = rpcinfo_proj[:cells][1].outputs
+    splitinfo = split(allinfo, ";")
+    just_me = findfirst(s -> contains(split(s, "|")[1], name), splitinfo)
+    split(splitinfo[just_me], "|")::Vector{SubString{String}}
+end
+
+
 function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpc})
     windowname::String = proj.id
     curr = cm["cell$(cell.id)"]["text"]
@@ -457,26 +468,28 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
     creatorkeys = CORE.users[getname(c)]["creatorkeys"]
     cbox = Components.textdiv("cell$(cell.id)", text = "")
     style!(cbox, "outline" => "transparent", "color" => "white")
+    @info :SESSIONKEY in keys(c.data)
+    @info "building creator cell for $(Olive.get_session_key(c))"
+    key = ToolipsSession.get_session_key(c)
     on(c, cbox, "input") do cm2::ComponentModifier
         txt = cm2[cbox]["text"]
         if txt in keys(creatorkeys)
             pos = findfirst(lcell -> lcell.id == cell.id, cells)
             cellt = creatorkeys[txt]
             new_cell = Cell(string(cellt), "")
-            session = c[:Session]
+            session = Olive.SES
             mock_ses = ToolipsSession.MockSession(session)
-            host_event = ToolipsSession.find_host(c)
-            tempdata = Dict{Symbol, Any}(:Session => mock_ses, :OliveCore => c[:OliveCore], :SESSIONKEY => "")
-            newcon = Connection(c.stream, tempdata, Vector{Toolips.Route}(), get_ip(c))
-            key = ToolipsSession.get_session_key(c)
-            for client in host_event.clients
+            host_id, host_event = ToolipsSession.find_host(c, true)
+            
+            @warn (host_id, host_event.clients ...)
+            for client in (host_id, host_event.clients ...)
                 if client == key
                     continue
                 end
-                newcon[:SESSIONKEY] = client
+                tempdata = Dict{Symbol, Any}(:Session => session, :OliveCore => c[:OliveCore], :SESSIONKEY => client)
+                newcon = Connection(c.stream, tempdata, Vector{Toolips.Route}(), get_ip(c))
                 insert!(cm2, windowname, pos, build(newcon, cm2, new_cell, proj))
                 remove!(cm2, buttonbox)
-                push!(session.events[client], mock_ses.new_events[client] ...)
                 call!(c, cm2, client)
             end
             remove!(cm2, buttonbox)
@@ -486,7 +499,7 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
             focus!(cm2, "cell$(new_cell.id)")
             # finished func!
          elseif txt != ""
-             olive_notify!(cm2, "$txt is not a recognized cell hotkey", color = "red")
+             Olive.olive_notify!(cm2, "$txt is not a recognized cell hotkey", color = "red")
              set_text!(cm2, cbox, "")
         end
     end
@@ -522,6 +535,16 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
          push!(buttonbox, b)
      end
      buttonbox
+end
+
+function build(c::Connection, cm::ComponentModifier, cell::Cell{:callcreator},
+    proj::Project{:rpc})
+    label = h3(text = cell.source * " is creating a cell")
+    collabdata = get_collaborator_data(c, cell.outputs, proj)
+    style!(label, "color" => collabdata[4])
+    bod = div("cellcontainer$(cell.id)", children = [label])
+    style!(bod, "border" => "3px solid $(collabdata[4])")
+    bod::Component{:div}
 end
 
 end # - module !

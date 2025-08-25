@@ -5,7 +5,7 @@ using Olive.Toolips.Components
 using Olive.OliveHighlighters
 using Olive.ToolipsSession
 using Olive: OliveExtension, Project, Cell, Environment, getname, Directory
-import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, is_jlcell
+import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, is_jlcell, evaluate
 
 function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
     if haskey(c[:OliveCore].data,  "collabicon")
@@ -334,7 +334,9 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
         style!(decollapse_button, "color" => "blue")
         controls::Vector{<:AbstractComponent} = tab_controls(c, p)
         insert!(controls, 1, decollapse_button)
-        [begin append!(cm, tabbody, serv); nothing end for serv in controls]
+        for serv in controls
+            append!(cm, tabbody, serv) 
+        end
     end
     tabbody::Component{:div}
 end

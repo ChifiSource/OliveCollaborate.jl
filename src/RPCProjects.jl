@@ -55,6 +55,61 @@ function build(c::AbstractConnection, cm::ComponentModifier, p::Project{:rpc})
     div(p.id, children = retvs, class = "projectwindow")::Component{:div}
 end
 
+function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
+    fname::String = p.id
+    tabbody::Component{:div} = div("tab$(fname)", class = "tabopen")
+    if(hidden)
+        tabbody[:class]::String = "tabclosed"
+    end
+    tablabel::Component{:a} = a("tablabel$(fname)", text = p.name, class = "tablabel")
+    push!(tabbody, tablabel)
+    on(c, tabbody, "click") do cm::ComponentModifier
+        if p.id in cm
+            return
+        end
+        projects::Vector{Project{<:Any}} = CORE.users[Olive.getname(c)].environment.projects
+        inpane = findall(proj::Project{<:Any} -> proj[:pane] == p[:pane], projects)
+        [begin
+            if projects[e].id != p.id 
+                Olive.style_tab_closed!(cm, projects[e])
+            end
+            nothing
+        end  for e in inpane]
+        projbuild::Component{:div} = build(c, cm, p)
+        set_children!(cm, "pane_$(p[:pane])", [projbuild])
+        cm["tab$(fname)"] = :class => "tabopen"
+        if length(p.data[:cells]) > 0
+            focus!(cm, "cell$(p[:cells][1].id)")
+        end
+    end
+    on(c, tabbody, "dblclick") do cm::ComponentModifier
+        if "$(fname)dec" in cm
+            return
+        end
+        c_projects = c[:OliveCore].users[getname(c)].environment.projects
+        collabproj = findfirst(proj -> typeof(proj) == Project{:collab}, c_projects)
+        ishost = c_projects[collabproj][:ishost]
+        decollapse_button::Component{:span} = span("$(fname)dec", text = "arrow_left", class = "tablabel")
+        controls::Vector{<:AbstractComponent} = if ishost
+            on(c, decollapse_button, "click") do cm2::ComponentModifier
+                remove!(cm2, "$(fname)close")
+                remove!(cm2, "$(fname)switch")
+                remove!(cm2, "$(fname)dec")
+            end
+            Olive.tab_controls(c, p)
+        else
+            Olive.tab_controls(c, p)[end - 1:end]
+        end
+        style!(decollapse_button, "color" => "blue")
+        insert!(controls, 1, decollapse_button)
+        for serv in controls
+            append!(cm, tabbody, serv)
+        end
+        nothing::Nothing
+    end
+    tabbody::Component{:div}
+end
+
 function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
     keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
     km = ToolipsSession.KeyMap()
@@ -253,6 +308,24 @@ function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:markd
         return
     end
     do_inner_rpc_highlight(OliveHighlighters.mark_markdown!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["markdown"])
+end
+
+function evaluate(c::Connection, cm::ComponentModifier, cell::Cell{:markdown},
+    proj::Project{:rpc})
+    active_cell = cm["cell$(cell.id)"]
+    if active_cell["contenteditable"] == "false"
+        return
+    end
+    activemd = active_cell["text"]
+    newtmd = tmd("cell$(cell.id)tmd", activemd)
+    ToolipsServables.interpolate!(newtmd, Olive.INTERPOLATORS ...)
+    newtext = replace(newtmd[:text], "`" => "\\`", "\"" => "\\\"", "''" => "\\'")
+    push!(cm.changes, "document.getElementById('cell$(cell.id)').innerHTML = `$newtext`;")
+    cm["cell$(cell.id)"] = "contenteditable" => "false"
+    on(c, cm, 100) do cm2::ComponentModifier
+        set_children!(cm2, "cellhighlight$(cell.id)", Vector{AbstractComponent}())
+        rpc!(c, cm2)
+    end
 end
 
 function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpc})

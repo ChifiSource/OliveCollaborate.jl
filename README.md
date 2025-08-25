@@ -7,8 +7,11 @@
 ##### notes
 - This extension will only allow you to share with other users via LAN or your own networking.
 - You can remove the `collaborate` icon  by adding `collabicon = false` to your `OliveCore`. The user addition system is slightly mutable, as we can change how users are added by creating our user-addition own cell type and path to adding the collaborate project. More information in [adding users](#adding-users).
+- Cell compatibility *is* limited, but this is *mainly* just the case for highlighting and filling. Highlight bindings have to be specifically tailored for RPC -- this project only binds the 'CORE' `Olive` cells -- `:code`, `:tomlvalues`, and `:markdown`. This could easily be expanded with extensions.
 ##### adding
+`OliveCollaborate` is added like any other `Olive` extension. In order to load the extension, either add `using OliveCollaborate` to your `olive.jl` or call `using OliveCollaborate` *before* starting `Olive`. Make sure the package is in your `olive` or global environment, as well, by adding it:
+```julia
+using Pkg; Pkg.add("OliveCollaborate")
+```
+##### configuration
 
-### implementing into your server
-
-### adding users

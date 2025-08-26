@@ -6,7 +6,7 @@ using Olive.OliveHighlighters
 using Olive.ToolipsSession
 using Olive: OliveExtension, Project, Cell, Environment, getname, Directory
 import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, is_jlcell, evaluate
-
+import Olive: style_tab_closed!
 function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
     if haskey(c[:OliveCore].data,  "collabicon")
         if ~(c[:OliveCore].data["collabicon"])
@@ -24,7 +24,7 @@ function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite}
         cells = Vector{Cell}([
         Cell("collab", " ","$(getname(c))|no|all|#e75480")])
         projdict = Dict{Symbol, Any}(:cells => cells, :env => "",
-        :ishost => true, :addtype => :collablink)
+        :ishost => true, :addtype => :collablink, :open => "" => "")
         inclproj = Project{:collab}("collaborators", projdict)
         push!(env.projects, inclproj)
         tab = build_tab(c, inclproj)
@@ -157,7 +157,7 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
 end
 
 function make_collab_str(name::String, perm::Any, color::String)
-    ";$name|no|$perm|$colr"
+    ";$name|no|$perm|$color"
 end
 
 

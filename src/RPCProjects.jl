@@ -68,13 +68,35 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
             return
         end
         projects::Vector{Project{<:Any}} = CORE.users[Olive.getname(c)].environment.projects
+        collab_proj = findfirst(p -> typeof(p) == Project{:collab}, projects)
+        collab_proj = projects[collab_proj]
+        if ~(collab_proj[:ishost])
+            # is client; ensure the host has project open
+            host_env = c[:OliveCore].users[p.data[:host]].environment
+            projpos = findfirst(p -> typeof(p) == Project{:collab}, host_env.projects)
+            hostcol = host_env.projects[projpos]
+            selected_projects = hostcol[:open]
+            if ~(p.id in selected_projects)
+                return
+            end
+        else
+            # trigger for client from host:
+            if p[:pane] == "one"
+                collab_proj.data[:open] = fname => collab_proj[:open][2]
+            else
+                collab_proj.data[:open] = collab_proj[:open][1] => fname
+            end
+            trigger!(cm, "tab$fname")
+            style!(cm, "tab$fname", "border-bottom" => "2px solid green")
+            call!(c, cm)
+        end
         inpane = findall(proj::Project{<:Any} -> proj[:pane] == p[:pane], projects)
-        [begin
+        for e in inpane
             if projects[e].id != p.id 
-                Olive.style_tab_closed!(cm, projects[e])
+                style_tab_closed!(cm, projects[e])
             end
             nothing
-        end  for e in inpane]
+        end
         projbuild::Component{:div} = build(c, cm, p)
         set_children!(cm, "pane_$(p[:pane])", [projbuild])
         cm["tab$(fname)"] = :class => "tabopen"
@@ -89,15 +111,18 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
         c_projects = c[:OliveCore].users[getname(c)].environment.projects
         collabproj = findfirst(proj -> typeof(proj) == Project{:collab}, c_projects)
         ishost = c_projects[collabproj][:ishost]
+        if ~(ishost)
+            return
+        end
         decollapse_button::Component{:span} = span("$(fname)dec", text = "arrow_left", class = "tablabel")
         controls::Vector{<:AbstractComponent} = if ishost
+            Olive.tab_controls(c, p)
+        else
             on(c, decollapse_button, "click") do cm2::ComponentModifier
                 remove!(cm2, "$(fname)close")
                 remove!(cm2, "$(fname)switch")
                 remove!(cm2, "$(fname)dec")
             end
-            Olive.tab_controls(c, p)
-        else
             Olive.tab_controls(c, p)[end - 1:end]
         end
         style!(decollapse_button, "color" => "blue")
@@ -110,6 +135,11 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
     tabbody::Component{:div}
 end
 
+function style_tab_closed!(cm::ComponentModifier, proj::Project{:rpc})
+    cm["tab$(proj.id)"] = "class" => "tabclosed"
+    style!(cm, "tab$(proj.id)", "border-bottom" => 0px)
+end
+
 function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
     keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
     km = ToolipsSession.KeyMap()
@@ -119,12 +149,14 @@ function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
         rpc!(c, cm)
     end
     ToolipsSession.bind(km, keybindings["up"]) do cm2::ComponentModifier
-        Olive.cell_up!(c, cm2, cell, proj)
+        Olive.cell_up!(c, cm2, cell, proj, false)
         rpc!(c, cm2)
+        focus!(cm2, "cell$(cell.id)")
     end
     ToolipsSession.bind(km, keybindings["down"]) do cm2::ComponentModifier
-        Olive.cell_down!(c, cm2, cell, proj)
+        Olive.cell_down!(c, cm2, cell, proj, false)
         rpc!(c, cm2)
+        focus!(cm2, "cell$(cell.id)")
     end
     ToolipsSession.bind(km, keybindings["delete"]) do cm2::ComponentModifier
         Olive.cell_delete!(c, cm2, cell, cells)

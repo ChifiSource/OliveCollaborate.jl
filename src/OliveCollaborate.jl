@@ -7,6 +7,7 @@ using Olive.ToolipsSession
 using Olive: OliveExtension, Project, Cell, Environment, getname, Directory
 import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, is_jlcell, evaluate
 import Olive: style_tab_closed!
+
 function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
     if haskey(c[:OliveCore].data,  "collabicon")
         if ~(c[:OliveCore].data["collabicon"])
@@ -133,18 +134,26 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
             np::Project{:rpc}
         end for p in filter(d -> ~(d.id == proj.id), env.projects)])
         for project in env.projects
-            Olive.close_project(c, cm2, project)
+            if project.id == proj.id
+                continue
+            end
+            remove!(cm, "tab" * project.id)
         end
         env.projects = hostprojs
         for pro in hostprojs
-            Olive.open_project(c, cm2, pro, build_tab(c, pro))
+            append!(cm, "pane_one_tabs", build_tab(c, pro))
         end
         push!(hostprojs, proj)
         proj.data[:host] = ToolipsSession.get_session_key(c)
+        # add rpc directory
+        rpcdir = Directory(env.pwd, dirtype = "rpc")
+        insert!(env.directories, 1, rpcdir)
+        insert!(cm2, "projectexplorer", 1, build(c, rpcdir))
         proj.data[:active] = true
         open_rpc!(c, cm2, tickrate = 120)
         Olive.olive_notify!(cm2, "collaborative session now active")
         Components.trigger!(cm2, "tab$(proj.id)")
+        style!(cm2, "collabon", "color" => "lightgreen")
     end
     if proj[:active]
         powerbg = "lightgreen"
@@ -346,5 +355,5 @@ rpc projects
 ==#
 
 include("RPCProjects.jl")
-
+include("RPCDirectories.jl")
 end # - module !

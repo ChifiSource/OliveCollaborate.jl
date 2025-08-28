@@ -63,15 +63,23 @@ function build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Direc
         env = c[:OliveCore].users[oluser_name].environment
         # TODO loop clients, add new projects to their environment...
         #   build hidden tabs INDIVIDUALLY (unfortunately).
+        host_event = ToolipsSession.find_host(c)
+        for client in host_event.clients
+            
+            tempdata = Dict{Symbol, Any}(:Session => session, :OliveCore => c[:OliveCore], :SESSIONKEY => client)
+            newcon = Connection(c.stream, tempdata, Vector{Toolips.Route}(), get_ip(c))
+            client_tab = build_tab(newcon, newproj, hidden = true)
+            append!(cm, "pane_one_tabs", client_tab)
+            call!(c, cm, client)
+        end
+        Olive.olive_notify!(cm, "$(getname(c)) added $(newproj.name) to the session")
+        call!(c, cm)
         push!(env.projects, newproj)
         tab::Component{:div} = build_tab(c, newproj, hidden = true)
         append!(cm, "pane_one_tabs", tab)
         on(cm, 100) do cl::Components.ClientModifier
             trigger!(cl, "tab" * newproj.id)
         end
-        rpc!(c, cm)
-        Olive.olive_notify!(cm, "$(getname(c)) added $(newproj.name) to the session")
-        call!(c, cm)
     end
     maincell
 end

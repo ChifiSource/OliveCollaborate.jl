@@ -218,7 +218,6 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
             cellt = creatorkeys[txt]
             new_cell = Cell(string(cellt), "")
             session = Olive.SES
-            mock_ses = ToolipsSession.MockSession(session)
             host_id, host_event = ToolipsSession.find_host(c, true)
             for client in (host_id, host_event.clients ...)
                 if client == key

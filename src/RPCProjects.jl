@@ -16,6 +16,9 @@ function get_collaborator_data(c::Connection, proj::Project{:rpc}, name::String 
     allinfo = rpcinfo_proj[:cells][1].outputs
     splitinfo = split(allinfo, ";")
     just_me = findfirst(s -> contains(s, name), splitinfo)
+    if isnothing(just_me)
+        @warn "NO DATA FOUND FOR $name"
+    end
     Collaborator(split(splitinfo[just_me], "|"))::Collaborator
 end
 
@@ -32,7 +35,7 @@ function set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::C
         comp = comp[:children, "cell$cellid"]
     end
     on(c, comp, "focus") do cm::ComponentModifier
-        color = get_collaborator_data(c, proj, cell.outputs).color
+        color = get_collaborator_data(c, proj).color
         style!(cm, "cellcontainer$cellid", "border" => "2px solid $color", 
             "border-radius" => 3px)
         cm["cell$cellid"] = "contenteditable" => "false"
@@ -117,16 +120,7 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
             return
         end
         decollapse_button::Component{:span} = span("$(fname)dec", text = "arrow_left", class = "tablabel")
-        controls::Vector{<:AbstractComponent} = if ishost
-            Olive.tab_controls(c, p)
-        else
-            on(c, decollapse_button, "click") do cm2::ComponentModifier
-                remove!(cm2, "$(fname)close")
-                remove!(cm2, "$(fname)switch")
-                remove!(cm2, "$(fname)dec")
-            end
-            Olive.tab_controls(c, p)[end - 1:end]
-        end
+        controls::Vector{<:AbstractComponent} = tab_controls(c, p)
         style!(decollapse_button, "color" => "blue")
         insert!(controls, 1, decollapse_button)
         for serv in controls
@@ -135,6 +129,33 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
         nothing::Nothing
     end
     tabbody::Component{:div}
+end
+
+function tab_controls(c::Connection, p::Project{:rpc})
+    fname::String = p.id
+    closebutton::Component{:span} = span("$(fname)close", text = "close", class = "tablabel")
+    on(c, closebutton, "click") do cm2::ComponentModifier
+        Olive.close_project(c, cm2, p)
+        rpc!(c, cm2)
+        # TODO close manually for all clients
+    end
+    restartbutton::Component{:span} = span("$(fname)restart", text = "restart_alt", class = "tablabel")
+    on(c, restartbutton, "click") do cm2::ComponentModifier
+        Olive.re_source!(c, p)
+        Olive.olive_notify!(cm2, "module for $(fname) re-sourced")
+        rpc!(c, cm2)
+    end
+    runall_button::Component{:span} = span("$(fname)run", text = "start", class = "tablabel")
+    on(c, runall_button, "click") do cm2::ComponentModifier
+        Olive.step_evaluate(c, cm2, p)
+    end
+    switchpane_button::Component{:span} = span("$(fname)switch", text = "compare_arrows", class = "tablabel")
+    on(c, switchpane_button, "click") do cm2::ComponentModifier
+        Olive.switch_pane!(c, cm2, p)
+        rpc!(c, cm2)
+    end
+    style!(closebutton, "font-size"  => 17pt, "color" => "red")
+    return([switchpane_button, restartbutton, runall_button, closebutton])::Vector{<:AbstractComponent}
 end
 
 function style_tab_closed!(cm::ComponentModifier, proj::Project{:rpc})

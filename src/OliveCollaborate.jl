@@ -6,7 +6,7 @@ using Olive.OliveHighlighters
 using Olive.ToolipsSession
 using Olive: OliveExtension, Project, Cell, Environment, getname, Directory
 import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, is_jlcell, evaluate
-import Olive: style_tab_closed!
+import Olive: style_tab_closed!, tab_controls
 
 GLOBAL_TICKRATE::Int64 = 100
 

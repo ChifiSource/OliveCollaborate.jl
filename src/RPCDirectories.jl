@@ -1,4 +1,5 @@
 function build(c::AbstractConnection, dir::Directory{:rpc})
+    rpc_heading = h2(text = "collaboratorive session")
     env = c[:OliveCore].users[getname(c)].environment
     collab_proj = findfirst(p -> typeof(p) == Project{:collab}, env.projects)
     dirid, diruri = if ~(contains(dir.uri, "!;"))
@@ -18,7 +19,7 @@ function build(c::AbstractConnection, dir::Directory{:rpc})
     style!(selectionbox, "height" => 0percent, "overflow" => "hidden", "opacity" => 0percent)
     lblbox = div("main$dirid", children = [a(text = diruri, style = "color:#ffc494;")])
     style!(lblbox, "cursor" => "pointer")
-    dirbox = div("seldir$dirid", children = [lblbox, selectionbox])
+    dirbox = div("seldir$dirid", children = [rpc_heading, lblbox, selectionbox])
     on(c, lblbox, "click") do cm::ComponentModifier
         selboxn = "selbox$dirid"
         if cm[selboxn]["ex"] == "0"
@@ -51,7 +52,6 @@ function build(c::Connection, cell::Cell{:rpcselector}, d::Directory{<:Any}, bin
     filecell::Component{<:Any}
 end
 
-
 function build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any})
     maincell = Olive.build_selector_cell(c, cell, dir, false)
     on(c, maincell, "dblclick") do cm::ComponentModifier
@@ -61,13 +61,17 @@ function build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Direc
             :path => cell.outputs, :pane => "one", :host => oluser_name)
         newproj = Project{:rpc}(cell.source, projdata)
         env = c[:OliveCore].users[oluser_name].environment
+        source_module!(c, newproj)
         # TODO loop clients, add new projects to their environment...
         #   build hidden tabs INDIVIDUALLY (unfortunately).
         host_event = ToolipsSession.find_host(c)
+        users = c[:OliveCore].users
+        session = c[:Session]
         for client in host_event.clients
-            
             tempdata = Dict{Symbol, Any}(:Session => session, :OliveCore => c[:OliveCore], :SESSIONKEY => client)
             newcon = Connection(c.stream, tempdata, Vector{Toolips.Route}(), get_ip(c))
+            found = findfirst(cl_user -> cl_user.key == client, users)
+            push!(users[found].environment.projects, newproj)
             client_tab = build_tab(newcon, newproj, hidden = true)
             append!(cm, "pane_one_tabs", client_tab)
             call!(c, cm, client)

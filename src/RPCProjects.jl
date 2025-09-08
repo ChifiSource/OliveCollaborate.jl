@@ -1,21 +1,22 @@
-function get_collaborator_data(c::Connection, proj::Project{:rpc})
-    projs = c[:OliveCore].users[proj[:host]].environment.projects
-    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
-    rpcinfo_proj = projs[pf]
-    allinfo = rpcinfo_proj[:cells][1].outputs
-    splitinfo = split(allinfo, ";")
-    just_me = findfirst(s -> contains(split(s, "|")[1], getname(c)), splitinfo)
-    split(splitinfo[just_me], "|")::Vector{SubString{String}}
+mutable struct Collaborator{T}
+    name::T
+    connected::T
+    perm::T
+    color::T
+    Collaborator(args::Vector{<:AbstractString}) = begin
+        T::Type{<:AbstractString} = typeof(args[1])
+        new{T}(args ...)::Collaborator{T}
+    end
 end
 
-function get_collaborator_data(c::Connection, name::String, proj::Project{:rpc})
+function get_collaborator_data(c::Connection, proj::Project{:rpc}, name::String = getname(c))
     projs = c[:OliveCore].users[proj[:host]].environment.projects
     pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
     rpcinfo_proj = projs[pf]
     allinfo = rpcinfo_proj[:cells][1].outputs
     splitinfo = split(allinfo, ";")
-    just_me = findfirst(s -> contains(split(s, "|")[1], name), splitinfo)
-    split(splitinfo[just_me], "|")::Vector{SubString{String}}
+    just_me = findfirst(s -> contains(s, name), splitinfo)
+    Collaborator(split(splitinfo[just_me], "|"))::Collaborator
 end
 
 function set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, comp::Component{<:Any})
@@ -31,7 +32,7 @@ function set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::C
         comp = comp[:children, "cell$cellid"]
     end
     on(c, comp, "focus") do cm::ComponentModifier
-        color = get_collaborator_data(c, cell.outputs, proj)[4]
+        color = get_collaborator_data(c, proj, cell.outputs).color
         style!(cm, "cellcontainer$cellid", "border" => "2px solid $color", 
             "border-radius" => 3px)
         cm["cell$cellid"] = "contenteditable" => "false"
@@ -86,6 +87,7 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
             else
                 collab_proj.data[:open] = collab_proj[:open][1] => fname
             end
+            @info collab_proj.data[:open]
             trigger!(cm, "tab$fname")
             style!(cm, "tab$fname", "border-bottom" => "2px solid green")
             call!(c, cm)
@@ -151,7 +153,9 @@ function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
     ToolipsSession.bind(km, keybindings["up"]) do cm2::ComponentModifier
         Olive.cell_up!(c, cm2, cell, proj, false)
         rpc!(c, cm2)
-        focus!(cm2, "cell$(cell.id)")
+        on(cm2, 250) do cm
+            focus!(cm, "cell$(cell.id)")
+        end
     end
     ToolipsSession.bind(km, keybindings["down"]) do cm2::ComponentModifier
         Olive.cell_down!(c, cm2, cell, proj, false)
@@ -247,44 +251,26 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
     km = cell_bind!(c, cell, proj)
     ToolipsSession.bind(c, cm, cbox, km)
     olmod = CORE.olmod
-     buttonbox = div("cellcontainer$(cell.id)")
-     push!(buttonbox, cbox)
-     push!(buttonbox, h3("spawn$(cell.id)", text = "new cell"))
-     group_excluded_sigs = Olive.get_group(c).cells
-     for m in methods(Olive.build, [Toolips.AbstractConnection, Toolips.Modifier, Olive.IPyCells.AbstractCell, Project{<:Any}])
-        sig = m.sig.parameters[4]
-         if sig == Cell{<:Any}
-             continue
-         end
-         if ~(is_jlcell(sig))
-            continue
-         end
-         signature::Symbol = sig.parameters[1]
-         if sig in group_excluded_sigs
-            continue
-         end
-         b = button("$(sig)butt", text = string(signature))
-         on(c, b, "click") do cm2::ComponentModifier
-             pos = findfirst(lcell -> lcell.id == cell.id, cells)
-             remove!(cm2, buttonbox)
-             new_cell = Cell(string(signature), "")
-             deleteat!(cells, pos)
-             insert!(cells, pos, new_cell)
-             insert!(cm2, windowname, pos, build(c, cm2, new_cell,
-              proj))
-         end
-         push!(buttonbox, b)
-     end
-     buttonbox
+    buttonbox = div("cellcontainer$(cell.id)")
+    push!(buttonbox, cbox)
+    push!(buttonbox, h3("spawn$(cell.id)", text = "new cell"))
+    for key in creatorkeys
+        keyind, cellind = (a(text = key[1]), a(text = ":" * string(key[2])))
+        style!(keyind, "background-color" => "#4e524f", "color" => "white", "font-weight" => "bold", "border-radius" => 3px)
+        style!(cellind, "color" => "#517d55", "font-weight" => "bold")
+        keyiv = div("-", children = [keyind, cellind])
+        push!(buttonbox, keyiv)
+    end
+    buttonbox
 end
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:callcreator},
     proj::Project{:rpc})
     label = h3(text = cell.source * " is creating a cell")
-    collabdata = get_collaborator_data(c, cell.outputs, proj)
-    style!(label, "color" => collabdata[4])
+    collabdata = get_collaborator_data(c, proj, cell.outputs)
+    style!(label, "color" => collabdata.color)
     bod = div("cellcontainer$(cell.id)", children = [label])
-    style!(bod, "border" => "3px solid $(collabdata[4])")
+    style!(bod, "border" => "3px solid $(collabdata.color)")
     bod::Component{:div}
 end
 
@@ -328,7 +314,7 @@ function do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Projec
     OliveHighlighters.clear!(tm)
     collabdata = get_collaborator_data(c, proj)
     ToolipsSession.call!(c, cm) do cm2::ComponentModifier
-        hltxt = first_half * "<a style='color:$(collabdata[4]);'>▆</a>" * second_half
+        hltxt = first_half * "<a style='color:$(collabdata.color);'>▆</a>" * second_half
         set_text!(cm2, "cellhighlight$(cell.id)", hltxt)
         set_text!(cm2, "cell$(cell.id)", curr)
     end
@@ -353,7 +339,7 @@ function evaluate(c::Connection, cm::ComponentModifier, cell::Cell{:markdown},
     newtext = replace(newtmd[:text], "`" => "\\`", "\"" => "\\\"", "''" => "\\'")
     push!(cm.changes, "document.getElementById('cell$(cell.id)').innerHTML = `$newtext`;")
     cm["cell$(cell.id)"] = "contenteditable" => "false"
-    on(c, cm, 100) do cm2::ComponentModifier
+    on(c, cm, 250) do cm2::ComponentModifier
         set_children!(cm2, "cellhighlight$(cell.id)", Vector{AbstractComponent}())
         rpc!(c, cm2)
     end

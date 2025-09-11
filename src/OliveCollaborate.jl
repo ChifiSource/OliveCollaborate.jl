@@ -1,3 +1,14 @@
+"""
+Created in September, 2025 by 
+[chifi - an open source software dynasty.](https://github.com/orgs/ChifiSource)
+- This software is MIT-licensed.
+### OliveCollaborate
+
+##### bindings
+```julia
+
+```
+"""
 module OliveCollaborate
 using Olive
 using Olive.Toolips
@@ -5,7 +16,65 @@ using Olive.Toolips.Components
 using Olive.OliveHighlighters
 using Olive.ToolipsSession
 using Olive: OliveExtension, Project, Cell, Environment, getname, Directory
-import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, is_jlcell
+import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, is_jlcell, evaluate
+import Olive: style_tab_closed!, tab_controls
+
+GLOBAL_TICKRATE::Int64 = 100
+
+mutable struct Collaborator{T}
+    name::T
+    connected::T
+    perm::T
+    color::T
+    Collaborator(args::Vector{<:AbstractString}) = begin
+        T::Type{<:AbstractString} = typeof(args[1])
+        new{T}(args ...)::Collaborator{T}
+    end
+end
+
+make_collab_str(co::Collaborator) = "$(co.name)|$(co.connected)|$(co.perm)|$(co.color)"
+
+function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
+    splitinfo = split(cell.outputs, ";")
+    just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
+    if isnothing(just_me)
+        @info name
+        @warn splitinfo
+    end
+    Collaborator(split(splitinfo[just_me], "|"))::Collaborator
+end
+
+function set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Collaborator)
+    splitinfo = split(cell.outputs, ";")
+    just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
+    splitinfo[just_me] = make_collab_str(col)
+    cell.outputs = join(splitinfo, ";")
+    nothing::Nothing
+end
+
+mutate_collab_data!(f::Function, cell::Cell{<:Any}, name::String) = begin
+    splitinfo = split(cell.outputs, ";")
+    just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
+    col = Collaborator(split(splitinfo[just_me], "|"))
+    f(col)
+    splitinfo[just_me] = make_collab_str(col)
+    cell.outputs = join(splitinfo, ";")
+end
+
+function get_collaborator_data(c::Connection, proj::Project{:rpc}, name::String = getname(c))
+    projs = c[:OliveCore].users[proj[:host]].environment.projects
+    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
+    rpcinfo_proj = projs[pf]
+    get_collaborator_data(rpcinfo_proj[:cells][1], name)::Collaborator
+end
+
+function set_collaborator_data!(c::Connection, proj::Project{:rpc}, collab::Collaborator, name::String = getname(c))
+    projs = c[:OliveCore].users[proj[:host]].environment.projects
+    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
+    rpcinfo_proj = projs[pf]
+    cell = rpcinfo_proj[:cells][1]
+    set_collaborator_data!(cell, name, col)::Nothing
+end
 
 function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
     if haskey(c[:OliveCore].data,  "collabicon")
@@ -24,7 +93,7 @@ function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite}
         cells = Vector{Cell}([
         Cell("collab", " ","$(getname(c))|no|all|#e75480")])
         projdict = Dict{Symbol, Any}(:cells => cells, :env => "",
-        :ishost => true, :addtype => :collablink)
+        :ishost => true, :addtype => :collablink, :open => "" => "")
         inclproj = Project{:collab}("collaborators", projdict)
         push!(env.projects, inclproj)
         tab = build_tab(c, inclproj)
@@ -51,10 +120,10 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
             fweight ...)
         personkey = c[:OliveCore].users[name].key
         style!(personbox, "display" => "flex", "padding" => 0px, "border-radius" => 0px, 
-        "min-width" => 100percent, "flex-direction" => "row", "overflow" => "hidden")
+            "min-width" => 100percent, "flex-direction" => "row", "overflow" => "hidden")
         permtag = a("$(name)permtag", text = perm)
         connected = a("$(name)connected", href = "'https://$(get_host(c))/?key=$personkey'")
-        if contains("yes", connect)
+        if contains("y", connect)
             style!(connected, "background-color" => "darkgreen", "color" => "white", "width" => 40percent, fweight ...)
             connected[:text] = "connected"
         else
@@ -63,11 +132,8 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
         end
         if perm == "all"
             style!(permtag, "background-color" => "#301934", "color" => "white", fweight ...)
-        elseif perm == "askall"
-            style!(permtag, "background-color" => "darkblue", "color" => "white", fweight ...)
         elseif perm == "view"
             style!(permtag, "background-color" => "darkgray", "color" => "white", fweight ...)
-        elseif perm == "askswitch"
             style!(permtag, "background-color" => "darkred", "color" => "white", fweight ...)
         end
         style!(permtag, "width" => 20percent)
@@ -115,7 +181,7 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
         append!(cm2, proj.id, build(c, cm2, newcell, proj))
     end
     style!(addbox, "background-color" => "darkorange", "color" => "white", "width" => 50percent, fweight ...)
-    poweron = Olive.topbar_icon("collabon", "power_settings_new")
+    poweron = Olive.topbar_icon("cell$(cell.id)", "power_settings_new")
     poweron[:align] = "center"
     on(c, poweron, "click") do cm2::ComponentModifier
         if ~(proj[:ishost])
@@ -133,18 +199,28 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
             np::Project{:rpc}
         end for p in filter(d -> ~(d.id == proj.id), env.projects)])
         for project in env.projects
+            if project.id == proj.id
+                continue
+            end
             Olive.close_project(c, cm2, project)
         end
         env.projects = hostprojs
         for pro in hostprojs
-            Olive.open_project(c, cm2, pro, build_tab(c, pro))
+            append!(cm2, "pane_one_tabs", build_tab(c, pro))
         end
         push!(hostprojs, proj)
         proj.data[:host] = ToolipsSession.get_session_key(c)
+        co = Collaborator([getname(c), "y", "all", "#1e1e1e"])
+        cell.outputs = make_collab_str(co)
+        # add rpc directory
+        rpcdir = Directory(env.pwd, dirtype = "rpc")
+        insert!(env.directories, 1, rpcdir)
+        insert!(cm2, "projectexplorer", 1, build(c, rpcdir))
         proj.data[:active] = true
-        open_rpc!(c, cm2, tickrate = 120)
+        open_rpc!(c, cm2, tickrate = GLOBAL_TICKRATE)
         Olive.olive_notify!(cm2, "collaborative session now active")
         Components.trigger!(cm2, "tab$(proj.id)")
+        style!(cm2, "collabon", "color" => "lightgreen")
     end
     if proj[:active]
         powerbg = "lightgreen"
@@ -157,7 +233,7 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
 end
 
 function make_collab_str(name::String, perm::Any, color::String)
-    ";$name|no|$perm|$colr"
+    "$name|no|$perm|$color"
 end
 
 
@@ -193,10 +269,11 @@ is_jlcell(type::Type{Cell{:collablink}}) = false
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, proj::Project{<:Any})
     cellid = cell.id
-    nametag = a("cell$cellid", text = "", contenteditable = true)
+    nametag = a("cell$cellid", text = "", contenteditable = true, align = "left")
     style!(nametag, "background-color" => "#18191A", "color" => "white", "border-radius" => 0px, 
-        "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 5percent)
-    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ["all", "askall", "read only"]])
+        "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 50percent, 
+        "min-height" => 2.5percent)
+    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ("all", "askall", "read only")])
     perm_selector = Components.select("permcollab", perm_opts)
     perm_selector[:value] = "all"
     style!(perm_selector, "height" => 100percent, "width" => 100percent)
@@ -204,7 +281,10 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
     style!(perm_container, "width" => 20percent,  "background-color" => "#242526")
     push!(perm_container, perm_selector)
     colorbox = Components.colorinput("colcont", value = "#efe1ed")
+    style!(colorbox, "background-color" => "white", "border" => "none", "height" => 100percent, "margin" => 0percent)
     completer = button("adduser", text = "add")
+    style!(completer, "background-color" => "white", "border" => "2px solid #1e1e1e", "color" => "#1e1e1e", 
+        "border-radius" => 2px)
     on(c, completer, "click") do cm2::ComponentModifier
         name = cm2[nametag]["text"]
         if name == ""
@@ -216,9 +296,10 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
         end
         perm = cm2[perm_selector]["value"]
         colr = cm2[colorbox]["value"]
-        pers = "$name|no|$perm|$colr"
+        pers = Collaborator([name, "n", perm, colr])
+        pers = make_collab_str(pers)
         infocell = proj[:cells][1]
-        infocell.outputs = infocell.outputs * ";$pers"
+        infocell.outputs = infocell.outputs * ";$(pers)"
         host_user = c[:OliveCore].users[Olive.getname(c)]
         projs = host_user.environment.projects
         key = ToolipsSession.gen_ref(4)
@@ -247,10 +328,11 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
         box = build_collab_preview(c, cm2, pers, proj, ignorefirst = true, 
             fweight ...)
         insert!(cm2, "colabstatus", 2, box[1])
+        Olive.cell_delete!(c, cm2, cell, proj[:cells])
         Olive.olive_notify!(cm2, "collaborator $name added to session", color = colr)
     end
     retiv = div("cellcontainer$cellid", children = [nametag, perm_container, colorbox, completer])
-    style!(retiv, "display" => "flex")
+    style!(retiv, "display" => "flex", "width" => 70percent, "height" => 3percent)
     retiv
 end
 
@@ -262,40 +344,26 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
     end
     rpc_scrf = cm::ComponentModifier -> begin
         if ~(:active in keys(p.data))
-            @info "canceled rpc join, no active in keys"
             return
         end
         is_active::Bool = p.data[:active]
         # check if rpc is open
         if is_active
-            # if peer
             cell = p[:cells][1]
             if ~(p[:ishost])
-            @warn "joining rpc"
-                join_rpc!(c, cm, p.data[:host])
-                splits = split(cell.outputs, ";")
-                ind = findfirst(n -> split(n, "|")[1] == getname(c), splits)
-                data = splits[ind]
-                color = split(data, "|")[4]
-                call!(c, cm) do cm2::ComponentModifier
-                    Olive.olive_notify!(cm2, "$(getname(c)) has joined !", color = string(color))
-                end
-            # if host
+                join_rpc!(c, cm, p.data[:host], tickrate = OliveCollaborate.GLOBAL_TICKRATE)
             else
-                @warn "rejoining host rpc"
-                open_rpc!(c, cm)
-                splits = split(cell.outputs, ";")
-                ind = findfirst(n -> split(n, "|")[1] == getname(c), splits)
-                data = splits[ind]
-                color = split(data, "|")[4]
-                call!(c, cm) do cm2::ComponentModifier
-                    Olive.olive_notify!(cm2, "$(getname(c)) has joined !", color = string(color))
-                end
+                open_rpc!(c, cm, tickrate = OliveCollaborate.GLOBAL_TICKRATE)
             end
-        else
-            @info "skipped rpc join, proj not active"
+            usr_name::AbstractString = getname(c)
+            collab = get_collaborator_data(cell, usr_name)
+            collab.connected = "y"
+            set_collaborator_data!(cell, usr_name, collab)
+            call!(c, cm) do cm2::ComponentModifier
+                Olive.olive_notify!(cm2, "$usr_name has joined !", color = string(collab.color))
+            end
         end# is active
-    end
+    end # spawn script (rpc_scrf, added to tabbody extras)
     rpc_eref = Toolips.gen_ref(6)
     ToolipsSession.register!(rpc_scrf, c, rpc_eref)
     rpc_scr = script(Toolips.gen_ref(5), text = "sendpage('$rpc_eref');")
@@ -334,7 +402,9 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
         style!(decollapse_button, "color" => "blue")
         controls::Vector{<:AbstractComponent} = tab_controls(c, p)
         insert!(controls, 1, decollapse_button)
-        [begin append!(cm, tabbody, serv); nothing end for serv in controls]
+        for serv in controls
+            append!(cm, tabbody, serv) 
+        end
     end
     tabbody::Component{:div}
 end
@@ -344,5 +414,5 @@ rpc projects
 ==#
 
 include("RPCProjects.jl")
-
+include("RPCDirectories.jl")
 end # - module !

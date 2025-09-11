@@ -5,4 +5,7 @@ version = "0.1.0"
 
 [deps]
 Olive = "724ecaf6-c7a0-4c22-b37e-0bb7b4193da8"
-OliveHighlighters = "f769160f-f39a-4920-b1de-ba699e2d8893"
+
+[compat]
+julia = "1.8"
+Olive = "0.2.5"

@@ -1,3 +1,14 @@
+"""
+Created in September, 2025 by 
+[chifi - an open source software dynasty.](https://github.com/orgs/ChifiSource)
+- This software is MIT-licensed.
+### OliveCollaborate
+
+##### bindings
+```julia
+
+```
+"""
 module OliveCollaborate
 using Olive
 using Olive.Toolips
@@ -9,6 +20,57 @@ import Olive: build, cell_bind!, cell_highlight!, build_base_input, build_tab, i
 import Olive: style_tab_closed!, tab_controls
 
 GLOBAL_TICKRATE::Int64 = 100
+
+mutable struct Collaborator{T}
+    name::T
+    connected::T
+    perm::T
+    color::T
+    Collaborator(args::Vector{<:AbstractString}) = begin
+        T::Type{<:AbstractString} = typeof(args[1])
+        new{T}(args ...)::Collaborator{T}
+    end
+end
+
+make_collab_str(co::Collaborator) = "$(co.name)|$(co.connected)|$(co.perm)|$(co.color)"
+
+function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
+    splitinfo = split(cell.outputs, ";")
+    just_me = findfirst(s -> s == name, splitinfo)
+    Collaborator(split(splitinfo[just_me], "|"))::Collaborator
+end
+
+function set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Collaborator)
+    splitinfo = split(cell.outputs, ";")
+    just_me = findfirst(s -> s == name, splitinfo)
+    splitinfo[just_me] = make_collab_str(col)
+    cell.outputs = join(splitinfo, ";")
+    nothing::Nothing
+end
+
+mutate_collab_data!(f::Function, cell::Cell{<:Any}, name::String) = begin
+    splitinfo = split(cell.outputs, ";")
+    just_me = findfirst(s -> s == name, splitinfo)
+    col = Collaborator(split(splitinfo[just_me], "|"))
+    f(col)
+    splitinfo[just_me] = make_collab_str(col)
+    cell.outputs = join(splitinfo, ";")
+end
+
+function get_collaborator_data(c::Connection, proj::Project{:rpc}, name::String = getname(c))
+    projs = c[:OliveCore].users[proj[:host]].environment.projects
+    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
+    rpcinfo_proj = projs[pf]
+    get_collaborator_data(rpcinfo_proj[:cells][1], name)::Collaborator
+end
+
+function set_collaborator_data!(c::Connection, proj::Project{:rpc}, collab::Collaborator, name::String = getname(c))
+    projs = c[:OliveCore].users[proj[:host]].environment.projects
+    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
+    rpcinfo_proj = projs[pf]
+    cell = rpcinfo_proj[:cells][1]
+    set_collaborator_data!(cell, name, col)::Nothing
+end
 
 function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
     if haskey(c[:OliveCore].data,  "collabicon")
@@ -57,7 +119,7 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
             "min-width" => 100percent, "flex-direction" => "row", "overflow" => "hidden")
         permtag = a("$(name)permtag", text = perm)
         connected = a("$(name)connected", href = "'https://$(get_host(c))/?key=$personkey'")
-        if contains("yes", connect)
+        if contains("y", connect)
             style!(connected, "background-color" => "darkgreen", "color" => "white", "width" => 40percent, fweight ...)
             connected[:text] = "connected"
         else
@@ -286,12 +348,12 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
             if ~(p[:ishost])
             @warn "joining rpc"
                 join_rpc!(c, cm, p.data[:host], tickrate = OliveCollaborate.GLOBAL_TICKRATE)
-                splits = split(cell.outputs, ";")
-                ind = findfirst(n -> split(n, "|")[1] == getname(c), splits)
-                data = splits[ind]
-                color = split(data, "|")[4]
+                usr_name::AbstractString = getname(c)
+                collab = get_collaborator_data(cell, usr_name)
+                collab.connected = "y"
+                set_collaborator_data!(cell, usr_name, collab)
                 call!(c, cm) do cm2::ComponentModifier
-                    Olive.olive_notify!(cm2, "$(getname(c)) has joined !", color = string(color))
+                    Olive.olive_notify!(cm2, "$usr_name has joined !", color = string(collab.color))
                 end
             # if host
             else

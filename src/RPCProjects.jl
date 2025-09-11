@@ -1,26 +1,3 @@
-mutable struct Collaborator{T}
-    name::T
-    connected::T
-    perm::T
-    color::T
-    Collaborator(args::Vector{<:AbstractString}) = begin
-        T::Type{<:AbstractString} = typeof(args[1])
-        new{T}(args ...)::Collaborator{T}
-    end
-end
-
-function get_collaborator_data(c::Connection, proj::Project{:rpc}, name::String = getname(c))
-    projs = c[:OliveCore].users[proj[:host]].environment.projects
-    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
-    rpcinfo_proj = projs[pf]
-    allinfo = rpcinfo_proj[:cells][1].outputs
-    splitinfo = split(allinfo, ";")
-    just_me = findfirst(s -> contains(s, name), splitinfo)
-    if isnothing(just_me)
-        @warn "NO DATA FOUND FOR $name"
-    end
-    Collaborator(split(splitinfo[just_me], "|"))::Collaborator
-end
 
 function set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, comp::Component{<:Any})
     cellid = cell.id

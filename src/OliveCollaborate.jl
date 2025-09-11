@@ -206,8 +206,9 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
     cellid = cell.id
     nametag = a("cell$cellid", text = "", contenteditable = true)
     style!(nametag, "background-color" => "#18191A", "color" => "white", "border-radius" => 0px, 
-        "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 5percent)
-    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ["all", "askall", "read only"]])
+        "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 8percent, 
+        "min-height" => 2percent)
+    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ("all", "askall", "read only")])
     perm_selector = Components.select("permcollab", perm_opts)
     perm_selector[:value] = "all"
     style!(perm_selector, "height" => 100percent, "width" => 100percent)
@@ -258,9 +259,10 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
         box = build_collab_preview(c, cm2, pers, proj, ignorefirst = true, 
             fweight ...)
         insert!(cm2, "colabstatus", 2, box[1])
+        Olive.cell_delete!(c, cm, cell, proj[:cells])
         Olive.olive_notify!(cm2, "collaborator $name added to session", color = colr)
     end
-    retiv = div("cellcontainer$cellid", children = [nametag, perm_container, colorbox, completer])
+    retiv = div("cellcontainer$cellid", align = "center", children = [nametag, perm_container, colorbox, completer])
     style!(retiv, "display" => "flex")
     retiv
 end

@@ -152,7 +152,13 @@ function tab_controls(c::Connection, p::Project{:rpc})
     switchpane_button::Component{:span} = span("$(fname)switch", text = "compare_arrows", class = "tablabel")
     on(c, switchpane_button, "click") do cm2::ComponentModifier
         Olive.switch_pane!(c, cm2, p)
-        rpc!(c, cm2)
+        collab_proj = findfirst(p -> typeof(p) == Project{:collab}, projects)
+        collab_proj = projects[collab_proj]
+        if p[:pane] == "one"
+            collab_proj.data[:open] = fname => collab_proj[:open][2]
+        else
+            collab_proj.data[:open] = collab_proj[:open][1] => fname
+        end
     end
     style!(closebutton, "font-size"  => 17pt, "color" => "red")
     return([switchpane_button, restartbutton, runall_button, closebutton])::Vector{<:AbstractComponent}
@@ -327,10 +333,10 @@ function do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Projec
     end
     n = length(curr)
     set_text!(tm, cell.source[1:cursorpos])
-    OliveHighlighters.mark_julia!(tm)
+    f(tm)
     first_half = string(tm)
     set_text!(tm, cell.source[cursorpos + 1:end])
-    OliveHighlighters.mark_julia!(tm)
+    f(tm)
     second_half = string(tm)
     OliveHighlighters.clear!(tm)
     collabdata = get_collaborator_data(c, proj)

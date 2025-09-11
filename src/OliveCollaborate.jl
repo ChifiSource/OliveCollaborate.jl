@@ -132,11 +132,8 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
         end
         if perm == "all"
             style!(permtag, "background-color" => "#301934", "color" => "white", fweight ...)
-        elseif perm == "askall"
-            style!(permtag, "background-color" => "darkblue", "color" => "white", fweight ...)
         elseif perm == "view"
             style!(permtag, "background-color" => "darkgray", "color" => "white", fweight ...)
-        elseif perm == "askswitch"
             style!(permtag, "background-color" => "darkred", "color" => "white", fweight ...)
         end
         style!(permtag, "width" => 20percent)
@@ -184,7 +181,7 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
         append!(cm2, proj.id, build(c, cm2, newcell, proj))
     end
     style!(addbox, "background-color" => "darkorange", "color" => "white", "width" => 50percent, fweight ...)
-    poweron = Olive.topbar_icon("collabon", "power_settings_new")
+    poweron = Olive.topbar_icon("cell$(cell.id)", "power_settings_new")
     poweron[:align] = "center"
     on(c, poweron, "click") do cm2::ComponentModifier
         if ~(proj[:ishost])
@@ -215,7 +212,6 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
         proj.data[:host] = ToolipsSession.get_session_key(c)
         co = Collaborator([getname(c), "y", "all", "#1e1e1e"])
         cell.outputs = make_collab_str(co)
-        @warn cell.outputs
         # add rpc directory
         rpcdir = Directory(env.pwd, dirtype = "rpc")
         insert!(env.directories, 1, rpcdir)
@@ -273,10 +269,10 @@ is_jlcell(type::Type{Cell{:collablink}}) = false
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, proj::Project{<:Any})
     cellid = cell.id
-    nametag = a("cell$cellid", text = "", contenteditable = true)
+    nametag = a("cell$cellid", text = "", contenteditable = true, align = "left")
     style!(nametag, "background-color" => "#18191A", "color" => "white", "border-radius" => 0px, 
-        "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 8percent, 
-        "min-height" => 2percent)
+        "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 50percent, 
+        "min-height" => 2.5percent)
     perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ("all", "askall", "read only")])
     perm_selector = Components.select("permcollab", perm_opts)
     perm_selector[:value] = "all"
@@ -285,7 +281,10 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
     style!(perm_container, "width" => 20percent,  "background-color" => "#242526")
     push!(perm_container, perm_selector)
     colorbox = Components.colorinput("colcont", value = "#efe1ed")
+    style!(colorbox, "background-color" => "white", "border" => "none", "height" => 100percent, "margin" => 0percent)
     completer = button("adduser", text = "add")
+    style!(completer, "background-color" => "white", "border" => "2px solid #1e1e1e", "color" => "#1e1e1e", 
+        "border-radius" => 2px)
     on(c, completer, "click") do cm2::ComponentModifier
         name = cm2[nametag]["text"]
         if name == ""
@@ -332,7 +331,7 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
         Olive.cell_delete!(c, cm2, cell, proj[:cells])
         Olive.olive_notify!(cm2, "collaborator $name added to session", color = colr)
     end
-    retiv = div("cellcontainer$cellid", align = "center", children = [nametag, perm_container, colorbox, completer])
+    retiv = div("cellcontainer$cellid", children = [nametag, perm_container, colorbox, completer])
     style!(retiv, "display" => "flex", "width" => 70percent, "height" => 3percent)
     retiv
 end

@@ -67,7 +67,6 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
             else
                 collab_proj.data[:open] = collab_proj[:open][1] => fname
             end
-            @info collab_proj.data[:open]
             trigger!(cm, "tab$fname")
             style!(cm, "tab$fname", "border-bottom" => "2px solid green")
             call!(c, cm)

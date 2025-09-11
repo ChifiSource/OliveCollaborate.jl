@@ -36,13 +36,17 @@ make_collab_str(co::Collaborator) = "$(co.name)|$(co.connected)|$(co.perm)|$(co.
 
 function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
     splitinfo = split(cell.outputs, ";")
-    just_me = findfirst(s -> s == name, splitinfo)
+    just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
+    if isnothing(just_me)
+        @info name
+        @warn splitinfo
+    end
     Collaborator(split(splitinfo[just_me], "|"))::Collaborator
 end
 
 function set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Collaborator)
     splitinfo = split(cell.outputs, ";")
-    just_me = findfirst(s -> s == name, splitinfo)
+    just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
     splitinfo[just_me] = make_collab_str(col)
     cell.outputs = join(splitinfo, ";")
     nothing::Nothing
@@ -50,7 +54,7 @@ end
 
 mutate_collab_data!(f::Function, cell::Cell{<:Any}, name::String) = begin
     splitinfo = split(cell.outputs, ";")
-    just_me = findfirst(s -> s == name, splitinfo)
+    just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
     col = Collaborator(split(splitinfo[just_me], "|"))
     f(col)
     splitinfo[just_me] = make_collab_str(col)
@@ -209,6 +213,9 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
         end
         push!(hostprojs, proj)
         proj.data[:host] = ToolipsSession.get_session_key(c)
+        co = Collaborator([getname(c), "y", "all", "#1e1e1e"])
+        cell.outputs = make_collab_str(co)
+        @warn cell.outputs
         # add rpc directory
         rpcdir = Directory(env.pwd, dirtype = "rpc")
         insert!(env.directories, 1, rpcdir)
@@ -230,7 +237,7 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
 end
 
 function make_collab_str(name::String, perm::Any, color::String)
-    ";$name|no|$perm|$color"
+    "$name|no|$perm|$color"
 end
 
 
@@ -290,9 +297,10 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
         end
         perm = cm2[perm_selector]["value"]
         colr = cm2[colorbox]["value"]
-        pers = "$name|no|$perm|$colr"
+        pers = Collaborator([name, "n", perm, colr])
+        pers = make_collab_str(pers)
         infocell = proj[:cells][1]
-        infocell.outputs = infocell.outputs * ";$pers"
+        infocell.outputs = infocell.outputs * ";$(pers)"
         host_user = c[:OliveCore].users[Olive.getname(c)]
         projs = host_user.environment.projects
         key = ToolipsSession.gen_ref(4)
@@ -321,11 +329,11 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
         box = build_collab_preview(c, cm2, pers, proj, ignorefirst = true, 
             fweight ...)
         insert!(cm2, "colabstatus", 2, box[1])
-        Olive.cell_delete!(c, cm, cell, proj[:cells])
+        Olive.cell_delete!(c, cm2, cell, proj[:cells])
         Olive.olive_notify!(cm2, "collaborator $name added to session", color = colr)
     end
     retiv = div("cellcontainer$cellid", align = "center", children = [nametag, perm_container, colorbox, completer])
-    style!(retiv, "display" => "flex")
+    style!(retiv, "display" => "flex", "width" => 70percent, "height" => 3percent)
     retiv
 end
 
@@ -337,40 +345,26 @@ function build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
     end
     rpc_scrf = cm::ComponentModifier -> begin
         if ~(:active in keys(p.data))
-            @info "canceled rpc join, no active in keys"
             return
         end
         is_active::Bool = p.data[:active]
         # check if rpc is open
         if is_active
-            # if peer
             cell = p[:cells][1]
             if ~(p[:ishost])
-            @warn "joining rpc"
                 join_rpc!(c, cm, p.data[:host], tickrate = OliveCollaborate.GLOBAL_TICKRATE)
-                usr_name::AbstractString = getname(c)
-                collab = get_collaborator_data(cell, usr_name)
-                collab.connected = "y"
-                set_collaborator_data!(cell, usr_name, collab)
-                call!(c, cm) do cm2::ComponentModifier
-                    Olive.olive_notify!(cm2, "$usr_name has joined !", color = string(collab.color))
-                end
-            # if host
             else
-                @warn "rejoining host rpc"
-                open_rpc!(c, cm)
-                splits = split(cell.outputs, ";")
-                ind = findfirst(n -> split(n, "|")[1] == getname(c), splits)
-                data = splits[ind]
-                color = split(data, "|")[4]
-                call!(c, cm) do cm2::ComponentModifier
-                    Olive.olive_notify!(cm2, "$(getname(c)) has joined !", color = string(color))
-                end
+                open_rpc!(c, cm, tickrate = OliveCollaborate.GLOBAL_TICKRATE)
             end
-        else
-            @info "skipped rpc join, proj not active"
+            usr_name::AbstractString = getname(c)
+            collab = get_collaborator_data(cell, usr_name)
+            collab.connected = "y"
+            set_collaborator_data!(cell, usr_name, collab)
+            call!(c, cm) do cm2::ComponentModifier
+                Olive.olive_notify!(cm2, "$usr_name has joined !", color = string(collab.color))
+            end
         end# is active
-    end
+    end # spawn script (rpc_scrf, added to tabbody extras)
     rpc_eref = Toolips.gen_ref(6)
     ToolipsSession.register!(rpc_scrf, c, rpc_eref)
     rpc_scr = script(Toolips.gen_ref(5), text = "sendpage('$rpc_eref');")

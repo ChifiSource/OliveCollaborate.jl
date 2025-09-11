@@ -228,7 +228,7 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
             session = Olive.SES
             host_id, host_event = ToolipsSession.find_host(c, true)
             for client in (host_id, host_event.clients ...)
-                if client == key
+                if client == key || ~(haskey(session.events), client)
                     continue
                 end
                 tempdata = Dict{Symbol, Any}(:Session => session, :OliveCore => c[:OliveCore], :SESSIONKEY => client)
@@ -271,7 +271,7 @@ end
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:callcreator},
     proj::Project{:rpc})
     label = h3(text = cell.source * " is creating a cell")
-    collabdata = get_collaborator_data(c, proj, cell.outputs)
+    collabdata = get_collaborator_data(c, proj, cell.source)
     style!(label, "color" => collabdata.color)
     bod = div("cellcontainer$(cell.id)", children = [label])
     style!(bod, "border" => "3px solid $(collabdata.color)")

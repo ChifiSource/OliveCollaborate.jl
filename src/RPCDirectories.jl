@@ -62,8 +62,6 @@ function build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Direc
         newproj = Project{:rpc}(cell.source, projdata)
         env = c[:OliveCore].users[oluser_name].environment
         source_module!(c, newproj)
-        # TODO loop clients, add new projects to their environment...
-        #   build hidden tabs INDIVIDUALLY (unfortunately).
         host_event = ToolipsSession.find_host(c)
         users = c[:OliveCore].users
         session = c[:Session]

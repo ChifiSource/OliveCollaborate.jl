@@ -21,7 +21,9 @@ import Olive: style_tab_closed!, tab_controls
 
 GLOBAL_TICKRATE::Int64 = 100
 
-mutable struct Collaborator{T}
+abstract type AbstractCollaborator end
+
+mutable struct Collaborator{T} <: AbstractCollaborator
     name::T
     connected::T
     perm::T
@@ -37,10 +39,6 @@ make_collab_str(co::Collaborator) = "$(co.name)|$(co.connected)|$(co.perm)|$(co.
 function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
     splitinfo = split(cell.outputs, ";")
     just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
-    if isnothing(just_me)
-        @info name
-        @warn splitinfo
-    end
     Collaborator(split(splitinfo[just_me], "|"))::Collaborator
 end
 
@@ -93,7 +91,8 @@ function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite}
         cells = Vector{Cell}([
         Cell("collab", " ","$(getname(c))|no|all|#e75480")])
         projdict = Dict{Symbol, Any}(:cells => cells, :env => "",
-        :ishost => true, :addtype => :collablink, :open => "" => "")
+        :ishost => true, :addtype => :collablink, :open => "" => "", 
+        :edittype => :collabedit)
         inclproj = Project{:collab}("collaborators", projdict)
         push!(env.projects, inclproj)
         tab = build_tab(c, inclproj)
@@ -122,7 +121,7 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
         style!(personbox, "display" => "flex", "padding" => 0px, "border-radius" => 0px, 
             "min-width" => 100percent, "flex-direction" => "row", "overflow" => "hidden")
         permtag = a("$(name)permtag", text = perm)
-        connected = a("$(name)connected", href = "'https://$(get_host(c))/?key=$personkey'")
+        connected = a("$(name)connected")
         if contains("y", connect)
             style!(connected, "background-color" => "darkgreen", "color" => "white", "width" => 40percent, fweight ...)
             connected[:text] = "connected"
@@ -132,9 +131,8 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
         end
         if perm == "all"
             style!(permtag, "background-color" => "#301934", "color" => "white", fweight ...)
-        elseif perm == "view"
+        elseif perm == "readonly"
             style!(permtag, "background-color" => "darkgray", "color" => "white", fweight ...)
-            style!(permtag, "background-color" => "darkred", "color" => "white", fweight ...)
         end
         style!(permtag, "width" => 20percent)
         if first_person && ~(ignorefirst)
@@ -143,10 +141,20 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
         end
         set_children!(personbox, [nametag, permtag, connected])
         if proj.data[:ishost]
+            connected[:href] = href = "'https://$(get_host(c))/key?q=$personkey'"
             editbox = Olive.topbar_icon("$(name)edit", "app_registration")
+            on(c, editbox, "click") do cm::ComponentModifier
+                if length(proj[:cells]) > 1
+                    olive_notify!(cm, "Close the currently open collaborator cell to open a new one.")
+                    return
+                end
+                newcell = Cell{:collabedit}(name)
+                push!(proj[:cells], newcell)
+                append!(cm, build(c, cm, newcell, proj))
+            end
             linkbox = Olive.topbar_icon("$(name)link", "link")
             on(c, linkbox, "click") do cm2::ComponentModifier
-                push!(cm2.changes, "navigator.clipboard.writeText('https://$(get_host(c))/?key=$personkey');")
+                push!(cm2.changes, "navigator.clipboard.writeText('https://$(get_host(c))/key?q=$personkey');")
                 Olive.olive_notify!(cm2, "link for $name copied to clipboard", color = color)
             end
             editbox[:align], linkbox[:align] = "center", "center"
@@ -267,13 +275,36 @@ end
 
 is_jlcell(type::Type{Cell{:collablink}}) = false
 
+function build(c::Connection, cm::ComponentModifier, cell::Cell{:collabedit}, proj::Project{<:Any})
+    collab = if ~(typeof(cell.outputs) <: AbstractCollaborator)
+        get_collaborator_data(c, proj, cell.outputs)
+    else
+        cell.outputs
+    end
+    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ("all", "readonly")])
+    perm_selector = Components.select("permcollab", perm_opts)
+    perm_selector[:value] = collab.perm
+    colorbox = Components.colorinput("colcont", value = collab.color)
+    completer = button("adduser", text = "update")
+    on(c, completer, "click") do cm::ComponentModifier
+        collab.color = cm["colcont"]["value"]
+        collab.perm = cm["permcollab"]["value"]
+        Olive.cell_delete!(c, cm, cell, proj[:cells])
+    end
+    style!(completer, "background-color" => "white", "border" => "2px solid #1e1e1e", "color" => "#1e1e1e", 
+        "border-radius" => 2px)
+    retiv = div("cellcontainer$cellid", children = [perm_container, colorbox, completer])
+    style!(retiv, "display" => "flex", "width" => 70percent, "height" => 3percent)
+    retiv::Component{:div}
+end
+
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, proj::Project{<:Any})
     cellid = cell.id
     nametag = a("cell$cellid", text = "", contenteditable = true, align = "left")
     style!(nametag, "background-color" => "#18191A", "color" => "white", "border-radius" => 0px, 
         "line-clamp" =>"1", "overflow" => "hidden", "display" => "-webkit-box", "padding" => 2px, "min-width" => 50percent, 
         "min-height" => 2.5percent)
-    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ("all", "askall", "read only")])
+    perm_opts = Vector{Servable}([Components.option(opt, text = opt) for opt in ("all", "readonly")])
     perm_selector = Components.select("permcollab", perm_opts)
     perm_selector[:value] = "all"
     style!(perm_selector, "height" => 100percent, "width" => 100percent)

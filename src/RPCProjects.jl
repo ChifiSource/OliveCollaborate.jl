@@ -227,7 +227,7 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
             session = Olive.SES
             host_id, host_event = ToolipsSession.find_host(c, true)
             for client in (host_id, host_event.clients ...)
-                if client == key || ~(haskey(session.events), client)
+                if client == key || ~(haskey(session.events, client))
                     continue
                 end
                 tempdata = Dict{Symbol, Any}(:Session => session, :OliveCore => c[:OliveCore], :SESSIONKEY => client)

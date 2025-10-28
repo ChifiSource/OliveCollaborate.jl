@@ -40,8 +40,6 @@ function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
     splitinfo = split(cell.outputs, ";")
     just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
     if isnothing(just_me)
-        @warn name
-        @warn splitinfo
         throw("could not get name: $name")
     end
     Collaborator(split(splitinfo[just_me], "|"))::Collaborator
@@ -71,9 +69,12 @@ function get_collaborator_data(c::Connection, proj::Project{<:Any}, name::String
     get_collaborator_data(rpcinfo_proj[:cells][1], name)::Collaborator
 end
 
-function set_collaborator_data!(c::Connection, rpcinfo_proj::Project{<:Any}, collab::Collaborator, name::String = getname(c))
+function set_collaborator_data!(c::Connection, proj::Project{<:Any}, collab::Collaborator, name::String = getname(c))
+    projs = c[:OliveCore].users[proj[:host]].environment.projects
+    pf = findfirst(p -> typeof(p) == Project{:collab}, projs)
+    rpcinfo_proj = projs[pf]
     cell = rpcinfo_proj[:cells][1]
-    set_collaborator_data!(cell, name, collab)::Nothing
+    set_collaborator_data!(cell, name, col)::Nothing
 end
 
 function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
@@ -246,7 +247,6 @@ function make_collab_str(name::String, perm::Any, color::String)
     "$name|no|$perm|$color"
 end
 
-
 is_jlcell(type::Type{Cell{:collab}}) = false
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any})
@@ -291,15 +291,10 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collabedit}, pr
     on(c, completer, "click") do cm::ComponentModifier
         collab.color = cm["colcont"]["value"]
         collab.perm = cm["permcollab"]["value"]
+        # TODO update collaborator data, update boxes with new values
         set_collaborator_data!(c, proj, collab, cell.source)
         style!(cm, cell.source * "tag", "background-color" => collab.color)
-        st = "#301934"
-        if ~(collab.perm == "all")
-            st = "darkgray"
-        end
-        pmtag = cell.source * "permtag"
-        style!(cm, pmtag, "background-color" => st)
-        set_text!(cm, pmtag, collab.perm)
+        
         Olive.cell_delete!(c, cm, cell, proj[:cells])
     end
     style!(completer, "background-color" => "white", "border" => "2px solid #1e1e1e", "color" => "#1e1e1e", 
@@ -352,8 +347,12 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, pr
         env.pwd = host_user.environment.pwd
         env.directories = host_user.environment.directories
         host_n = host_user.name
+        project_T = :rpc
+        if perm != "all"
+            project_T = :rpcro
+        end
         for p in filter(d -> ~(d.id == proj.id), projs)
-            np = Project{:rpc}(p.name)
+            np = Project{project_T}(p.name)
             np.data = p.data
             np.data[:host] = host_n
             np.id = p.id

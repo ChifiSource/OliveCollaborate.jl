@@ -36,7 +36,7 @@ function build(c::AbstractConnection, cm::ComponentModifier, p::Project{:rpc})
     div(p.id, children = retvs, class = "projectwindow")::Component{:div}
 end
 
-function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
+function build_base_rpc_tab(c::Connection, p::Project{<:Any}, ro::Bool = false; hidden::Bool = false)
     fname::String = p.id
     tabbody::Component{:div} = div("tab$(fname)", class = "tabopen")
     if(hidden)
@@ -105,6 +105,14 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
         nothing::Nothing
     end
     tabbody::Component{:div}
+end
+
+function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
+    build_base_rpc_tab(c, p, false, hidden = hidden)
+end
+
+function build_tab(c::Connection, p::Project{:rpcro}; hidden::Bool = false)
+    build_base_rpc_tab(c, p, true, hidden = hidden)
 end
 
 function tab_controls(c::Connection, p::Project{:rpc})
@@ -200,7 +208,6 @@ function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
         end
         rpc!(c, cm2)
     end
-
     ToolipsSession.bind(km, keybindings["focusup"]) do cm::ComponentModifier
         Olive.focus_up!(c, cm, cell, proj)
     end
@@ -350,4 +357,29 @@ end
 
 function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpc})
     do_inner_rpc_highlight(OliveHighlighters.mark_toml!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["toml"])
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpcro})
+    
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpcro})
+    
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:markdown}, proj::Project{:rpcro})
+    
+end
+
+function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpcro})
+    keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
+    km = ToolipsSession.KeyMap()
+    cells = proj[:cells]
+    ToolipsSession.bind(km, keybindings["focusup"]) do cm::ComponentModifier
+        Olive.focus_up!(c, cm, cell, proj)
+    end
+    ToolipsSession.bind(km, keybindings["focusdown"]) do cm::ComponentModifier
+        Olive.focus_down!(c, cm, cell, proj)
+    end
+    km::ToolipsSession.KeyMap
 end

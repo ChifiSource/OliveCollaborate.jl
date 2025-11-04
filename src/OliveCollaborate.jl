@@ -151,7 +151,7 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
                     Olive.olive_notify!(cm, "Close the currently open collaborator cell to open a new one.")
                     return
                 end
-                newcell = Cell{:collabedit}(name)
+                newcell = Cell{proj[:edittype]}(name)
                 push!(proj[:cells], newcell)
                 append!(cm, proj.id, build(c, cm, newcell, proj))
             end
@@ -276,6 +276,8 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::
 end
 
 is_jlcell(type::Type{Cell{:collablink}}) = false
+
+is_jlcell(type::Type{Cell{:collabedit}}) = false
 
 function build(c::Connection, cm::ComponentModifier, cell::Cell{:collabedit}, proj::Project{<:Any})
     collab = if ~(typeof(cell.outputs) <: AbstractCollaborator)

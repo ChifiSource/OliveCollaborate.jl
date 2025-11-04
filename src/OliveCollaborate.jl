@@ -6,7 +6,9 @@ Created in September, 2025 by
 `OliveCollaborate` provides the `Olive` editor with *extensive* multi-user collaboration features. This 
 extension allows users to connect to invite other clients to the same `Olive` session, and allows limited 
 specific permissions for each one to be applied. Click the new share icon in the top right, then press the 
-    power button, invite button, invite a friend, then send them the provided link.
+    power button, invite button, invite a friend, then send them the provided link. The `GLOBAL_TICKRATE` 
+    variable in `OliveCollaborate`, `OliveCollaborate.GLOBAL_TICKRATE`, may be used to adjust the request 
+    rate of the RPC sessions.
 
 This extension can also be adjusted to fit other form-factors and applications by replacing this button and 
 creating your own RPC project. To remove the original icon, simply set the value `collabicon` to `false` in 
@@ -109,8 +111,39 @@ import Olive: style_tab_closed!, tab_controls
 
 GLOBAL_TICKRATE::Int64 = 100
 
+"""
+```julia
+abstract AbstractCollaborator <: Any
+```
+A `Collaborator` is a simple structure that holds collaborator details, such as their permissions, name, 
+whether or not they are connected, and their color. This makes them easier and less confusing to work with.
+```julia
+# consistencies
+    name::Any
+    connected::Any
+    perm::Any
+    color::Any
+```
+- See also: `Collaborator`, `get_collaborator_data`
+"""
 abstract type AbstractCollaborator end
 
+"""
+```julia
+mutable struct Collaborator{T <: Any} <: AbstractCollaborator
+```
+- `name`**::T**
+- `connected`**::T**
+- `perm`**::T**
+- `color`**::T**
+
+The `Collaborator` is used by `OliveCollaborate` to process intermittent user data, which is retreived from 
+the `:collab` project and is stored as a `String`. This is typically returned by `get_collaborator_data`.
+```julia
+Collaborator(args::Vector{<:AbstractString})
+```
+- See also: `get_collaborator_data`, `set_collaborator_data!`, `mutate_collab_data!`, `AbstractCollaborator`
+"""
 mutable struct Collaborator{T} <: AbstractCollaborator
     name::T
     connected::T
@@ -122,8 +155,34 @@ mutable struct Collaborator{T} <: AbstractCollaborator
     end
 end
 
+"""
+```julia
+make_collab_str(args ...)
+```
+Makes a collaborator string from collaborator details provided as either a `String` or a full 
+constructed `Collaborator`.
+```julia
+make_collab_str(co::Collaborator)
+make_collab_str(name::String, perm::Any, color::String)
+```
+- See also: `get_collaborator_data`, `set_collaborator_data!`, `Collaborator`
+"""
 make_collab_str(co::Collaborator) = "$(co.name)|$(co.connected)|$(co.perm)|$(co.color)"
 
+"""
+```julia
+get_collaborator_data(args ...)
+```
+Gets the collaborator's data, as a `Collaborator`, from the cell's outputs -- this cell will be the first 
+cell in the `:collab` project. We can get the `Collaborator` data directly from that cell, or by by providing 
+the `Connection`, `Project`,  and `name` -- which will get the data for a specific person automatically. 
+The second `Method` below **calls the first** and acts as a more convenient access for the first.
+```julia
+get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
+get_collaborator_data(c::Connection, proj::Project{<:Any}, name::String = getname(c))
+```
+- See also: `get_collaborator_data`, `set_collaborator_data!`, `Collaborator`
+"""
 function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
     splitinfo = split(cell.outputs, ";")
     just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)

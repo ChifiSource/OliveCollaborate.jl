@@ -3,10 +3,98 @@ Created in September, 2025 by
 [chifi - an open source software dynasty.](https://github.com/orgs/ChifiSource)
 - This software is MIT-licensed.
 ### OliveCollaborate
+`OliveCollaborate` provides the `Olive` editor with *extensive* multi-user collaboration features. This 
+extension allows users to connect to invite other clients to the same `Olive` session, and allows limited 
+specific permissions for each one to be applied. Click the new share icon in the top right, then press the 
+    power button, invite button, invite a friend, then send them the provided link.
 
-##### bindings
+This extension can also be adjusted to fit other form-factors and applications by replacing this button and 
+creating your own RPC project. To remove the original icon, simply set the value `collabicon` to `false` in 
+your `CORE` data -- this can be done through the REPL, before saving settings, or it could more easily be done by 
+editing the `Project.toml` in your `olive` directly. Note that there is no way to remove the icon in `headless` mode. 
+Here is the original icon, which might be a good template to start from for adding your own:
 ```julia
 
+function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
+    if haskey(c[:OliveCore].data,  "collabicon")
+        if ~(c[:OliveCore].data["collabicon"])
+            return
+        end
+    end
+    ico = Olive.topbar_icon("sessionbttn", "send")
+    on(c, ico, "click") do cm::ComponentModifier
+        env = c[:OliveCore].users[getname(c)].environment
+        found = findfirst(p -> typeof(p) == Project{:collab}, env.projects)
+        if ~(isnothing(found))
+            Olive.olive_notify!(cm, "collaborator project already open.")
+            return
+        end
+        cells = Vector{Cell}([
+        Cell("collab", " ","$(getname(c))|no|all|#e75480")])
+        # change the `:addtype` and the `:edittype` to change how users add and edit collaborators
+        projdict = Dict{Symbol, Any}(:cells => cells, :env => "",
+        :ishost => true, :addtype => :collablink, :open => "" => "", 
+        :edittype => :collabedit)
+        inclproj = Project{:collab}("collaborators", projdict)
+        push!(env.projects, inclproj)
+        tab = build_tab(c, inclproj)
+        Olive.open_project(c, cm, inclproj, tab)
+    end
+    append!(om, "rightmenu", ico)
+end
+```
+##### bindings
+```julia
+# Olive Collaborate:
+Collaborator
+AbstractCollaborator
+GLOBAL_TICKRATE
+make_collab_str(co::Collaborator)
+get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
+set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Collaborator)
+mutate_collab_data!(f::Function, cell::Cell{<:Any}, name::String)
+get_collaborator_data(c::Connection, proj::Project{<:Any}, name::String = getname(c))
+set_collaborator_data!(c::Connection, proj::Project{<:Any}, collab::Collaborator, name::String = getname(c))
+build_collab_preview(c::Connection, cm::ComponentModifier, source::String, proj::Project{<:Any}, fweight ...; 
+    ignorefirst::Bool = false)
+build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any}, fweight ...)
+make_collab_str(name::String, perm::Any, color::String)
+set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, comp::Component{<:Any})
+build_base_rpc_tab(c::Connection, p::Project{<:Any}, ro::Bool = false; hidden::Bool = false)
+do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, 
+        cm::ComponentModifier, tm::Olive.Highlighter)
+build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any})
+
+# Olive extensions:
+build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite})
+is_jlcell(type::Type{Cell{:collab}})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any})
+is_jlcell(type::Type{Cell{:collabedit}})
+is_jlcell(type::Type{Cell{:collablink}})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:collabedit}, proj::Project{<:Any})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:collablink}, proj::Project{<:Any})
+build_tab(c::Connection, p::Project{:collab}; hidden::Bool = false)
+build(c::AbstractConnection, cm::ComponentModifier, p::Project{:rpc})
+build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
+build_tab(c::Connection, p::Project{:rpcro}; hidden::Bool = false)
+tab_controls(c::Connection, p::Project{:rpc})
+style_tab_closed!(cm::ComponentModifier, proj::Project{:rpc})
+cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
+    proj::Project{:rpc})
+build(c::Connection, cm::ComponentModifier, cell::Cell{:callcreator},
+    proj::Project{:rpc})
+is_jlcell(type::Type{Cell{:callcreator}})
+cell_bind!(c::Connection, cell::Cell{:getstarted}, proj::Project{:rpc})
+cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpc})
+cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:markdown}, proj::Project{:rpc})
+cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpc})
+cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpcro})
+cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpcro})
+cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:markdown}, proj::Project{:rpcro})
+cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpcro})
+build(c::AbstractConnection, dir::Directory{:rpc})
+build(c::Connection, cell::Cell{:rpcselector}, d::Directory{<:Any}, bind::Bool = true)
 ```
 """
 module OliveCollaborate

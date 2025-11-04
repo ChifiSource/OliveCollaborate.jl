@@ -284,6 +284,8 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:callcreator},
     bod::Component{:div}
 end
 
+is_jlcell(type::Type{Cell{:callcreator}}) = false
+
 function cell_bind!(c::Connection, cell::Cell{:getstarted}, proj::Project{:rpc})
     keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
     km = ToolipsSession.KeyMap()

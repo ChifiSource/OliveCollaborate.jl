@@ -32,7 +32,7 @@ function build(c::Connection, om::ComponentModifier, oe::OliveExtension{:invite}
             return
         end
         cells = Vector{Cell}([
-        Cell("collab", " ","$(getname(c))|no|all|#e75480")])
+        Cell("collab", " ","\$(getname(c))|no|all|#e75480")])
         # change the `:addtype` and the `:edittype` to change how users add and edit collaborators
         projdict = Dict{Symbol, Any}(:cells => cells, :env => "",
         :ishost => true, :addtype => :collablink, :open => "" => "", 

@@ -1,0 +1,12 @@
+name = "test"
+uuid = "19adb3ac-5964-4b7f-9599-b8d070968153"
+authors = ["emmac <emmaccode@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+OliveCollaborate = "197e6993-98e3-4984-a077-c769f1bc4b7b"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+OliveCollaborate = "0.1.0"
+Test = "1.11.0"

@@ -1,4 +1,12 @@
 
+"""
+```julia
+set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, comp::Component{<:Any}) -> ::Nothing
+```
+This function is called to give the current user the only limited focus of a certain cell, allowing for only 
+    one input to occur at any given time.
+- See also: `Collaborator`, `build_collab_preview`
+"""
 function set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, comp::Component{<:Any})
     cellid = cell.id
     childs = comp[:children]
@@ -36,7 +44,15 @@ function build(c::AbstractConnection, cm::ComponentModifier, p::Project{:rpc})
     div(p.id, children = retvs, class = "projectwindow")::Component{:div}
 end
 
-function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
+"""
+```julia
+build_base_rpc_tab(c::Connection, p::Project{<:Any}, ro::Bool = false; hidden::Bool = false) -> ::Component{:div}
+```
+Builds a base tab template from which additional RPC tabs may be built. The `ro` argument determines 
+whether the tab is *read-only*.
+- See also: `set_rpc_cellfocus!`, `Olive`, `build_tab`
+"""
+function build_base_rpc_tab(c::Connection, p::Project{<:Any}, ro::Bool = false; hidden::Bool = false)
     fname::String = p.id
     tabbody::Component{:div} = div("tab$(fname)", class = "tabopen")
     if(hidden)
@@ -105,6 +121,14 @@ function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
         nothing::Nothing
     end
     tabbody::Component{:div}
+end
+
+function build_tab(c::Connection, p::Project{:rpc}; hidden::Bool = false)
+    build_base_rpc_tab(c, p, false, hidden = hidden)
+end
+
+function build_tab(c::Connection, p::Project{:rpcro}; hidden::Bool = false)
+    build_base_rpc_tab(c, p, true, hidden = hidden)
 end
 
 function tab_controls(c::Connection, p::Project{:rpc})
@@ -200,7 +224,6 @@ function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpc})
         end
         rpc!(c, cm2)
     end
-
     ToolipsSession.bind(km, keybindings["focusup"]) do cm::ComponentModifier
         Olive.focus_up!(c, cm, cell, proj)
     end
@@ -227,7 +250,7 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:creator},
             session = Olive.SES
             host_id, host_event = ToolipsSession.find_host(c, true)
             for client in (host_id, host_event.clients ...)
-                if client == key || ~(haskey(session.events), client)
+                if client == key || ~(haskey(session.events, client))
                     continue
                 end
                 tempdata = Dict{Symbol, Any}(:Session => session, :OliveCore => c[:OliveCore], :SESSIONKEY => client)
@@ -277,6 +300,8 @@ function build(c::Connection, cm::ComponentModifier, cell::Cell{:callcreator},
     bod::Component{:div}
 end
 
+is_jlcell(type::Type{Cell{:callcreator}}) = false
+
 function cell_bind!(c::Connection, cell::Cell{:getstarted}, proj::Project{:rpc})
     keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
     km = ToolipsSession.KeyMap()
@@ -292,6 +317,22 @@ function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}
     do_inner_rpc_highlight(OliveHighlighters.mark_julia!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["julia"])
 end
 
+"""
+```julia
+do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, 
+        cm::ComponentModifier, tm::Olive.Highlighter) -> ::Nothing
+```
+This is a convenience function that can be used to implement collaborative highlighting for any cell with 
+    `OliveHighlighters`. We provide the highlighter itself and the function to mark it (the first argument) 
+    and this function will automatically mark it on our current page. This would be called in `cell_highlight!`, 
+        for instance this is how it is done with Julia:
+```julia
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpc})
+    do_inner_rpc_highlight(OliveHighlighters.mark_julia!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["julia"])
+end
+```
+- See also: `OliveCollaborate`, `Collaborator`
+"""
 function do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, 
         cm::ComponentModifier, tm::Olive.Highlighter)
     windowname::String = proj.id
@@ -350,4 +391,29 @@ end
 
 function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpc})
     do_inner_rpc_highlight(OliveHighlighters.mark_toml!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["toml"])
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:tomlvalues}, proj::Project{:rpcro})
+    
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpcro})
+    
+end
+
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:markdown}, proj::Project{:rpcro})
+    
+end
+
+function cell_bind!(c::Connection, cell::Cell{<:Any}, proj::Project{:rpcro})
+    keybindings = c[:OliveCore].users[Olive.getname(c)].data["keybindings"]
+    km = ToolipsSession.KeyMap()
+    cells = proj[:cells]
+    ToolipsSession.bind(km, keybindings["focusup"]) do cm::ComponentModifier
+        Olive.focus_up!(c, cm, cell, proj)
+    end
+    ToolipsSession.bind(km, keybindings["focusdown"]) do cm::ComponentModifier
+        Olive.focus_down!(c, cm, cell, proj)
+    end
+    km::ToolipsSession.KeyMap
 end

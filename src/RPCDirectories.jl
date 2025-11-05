@@ -46,22 +46,44 @@ function build(c::Connection, cell::Cell{:rpcselector}, d::Directory{<:Any}, bin
             build_rpc_filecell(c, mcell, dir)
         end for mcell in newcells])
         dirid = split(d.uri, "!;")[1]
-        returner = Olive.build_any_returner(build_readonly_filecell, c, path, "selbox$dirid", d.uri, :roselector)
+        returner = Olive.build_any_returner(build_rpc_filecell, c, path, "selbox$dirid", d.uri, :roselector)
         set_children!(cm, "selbox$dirid", [returner, childs ...])
     end
     filecell::Component{<:Any}
 end
 
+"""
+```julia
+build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any}) -> ::Component{:div}
+```
+Builds a *selector* cell for the RPC directory, which makes it possible for the host to open new files into 
+the RPC session. This is called as part of `build(c::AbstractConnection, dir::Directory{:rpc})` and is again 
+called when a new directory is selected
+- See also: `Directory`, `Olive`, `OliveCollaborate`
+"""
 function build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any})
     maincell = Olive.build_selector_cell(c, cell, dir, false)
     on(c, maincell, "dblclick") do cm::ComponentModifier
         cells = Olive.olive_read(cell)
         oluser_name = getname(c)
+        fsplit::Vector{SubString} = split(cell.outputs, "/")
+        uriabove::String = join(fsplit[1:length(fsplit) - 1], "/")
+        environment::String = ""
+        if "Project.toml" in readdir(uriabove)
+            environment = uriabove
+        else
+            if "home" in keys(c[:OliveCore].data)
+                environment = c[:OliveCore].data["home"]
+            else
+                environment = CORE.data["wd"]
+            end
+        end
         projdata::Dict{Symbol, Any} = Dict{Symbol, Any}(:cells => cells,
-            :path => cell.outputs, :pane => "one", :host => oluser_name)
+            :path => cell.outputs, :pane => "one", :host => oluser_name, 
+            :env => environment)
         newproj = Project{:rpc}(cell.source, projdata)
         env = c[:OliveCore].users[oluser_name].environment
-        source_module!(c, newproj)
+        Olive.source_module!(c, newproj)
         host_event = ToolipsSession.find_host(c)
         users = c[:OliveCore].users
         session = c[:Session]

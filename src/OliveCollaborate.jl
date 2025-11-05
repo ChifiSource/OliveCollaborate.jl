@@ -389,6 +389,26 @@ function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:col
             return
         end
         if proj[:active]
+            # === CLOSE THE COLLABORATIVE SESSION ===
+            name = getname(c)
+            proj.data[:active] = false
+            users = c[:OliveCore].users
+            for client in split(cell.outputs, ";")
+                client_name = split(client, "|")[1]
+                if client_name == name
+                    continue
+                end
+                found = findfirst(user -> user.name == client_name, users)
+                deleteat!(users, found)
+            end
+            redirect!(cm2, "/")
+            call!(c, cm2)
+            cell.outputs = make_collab_str(Collaborator([getname(c), "y", "all", "#1e1e1e"]))
+            events = c[:Session].events[ToolipsSession.get_session_key(c)]
+            found = findfirst(event -> typeof(event) <: ToolipsSession.RPCEvent, events)
+            Olive.olive_notify!(cm2, "collaborative session closed")
+            # reset styles and UI elements
+            redirect!(cm2, "/")
             return
         end
         env = c[:OliveCore].users[getname(c)].environment

@@ -52,6 +52,15 @@ function build(c::Connection, cell::Cell{:rpcselector}, d::Directory{<:Any}, bin
     filecell::Component{<:Any}
 end
 
+"""
+```julia
+build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any}) -> ::Component{:div}
+```
+Builds a *selector* cell for the RPC directory, which makes it possible for the host to open new files into 
+the RPC session. This is called as part of `build(c::AbstractConnection, dir::Directory{:rpc})` and is again 
+called when a new directory is selected
+- See also: `Directory`, `Olive`, `OliveCollaborate`
+"""
 function build_rpc_filecell(c::AbstractConnection, cell::Cell{<:Any}, dir::Directory{<:Any})
     maincell = Olive.build_selector_cell(c, cell, dir, false)
     on(c, maincell, "dblclick") do cm::ComponentModifier

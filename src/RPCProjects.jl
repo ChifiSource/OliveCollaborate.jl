@@ -1,4 +1,12 @@
 
+"""
+```julia
+set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, comp::Component{<:Any}) -> ::Nothing
+```
+This function is called to give the current user the only limited focus of a certain cell, allowing for only 
+    one input to occur at any given time.
+- See also: `Collaborator`, `build_collab_preview`
+"""
 function set_rpc_cellfocus!(c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, comp::Component{<:Any})
     cellid = cell.id
     childs = comp[:children]
@@ -36,6 +44,14 @@ function build(c::AbstractConnection, cm::ComponentModifier, p::Project{:rpc})
     div(p.id, children = retvs, class = "projectwindow")::Component{:div}
 end
 
+"""
+```julia
+build_base_rpc_tab(c::Connection, p::Project{<:Any}, ro::Bool = false; hidden::Bool = false) -> ::Component{:div}
+```
+Builds a base tab template from which additional RPC tabs may be built. The `ro` argument determines 
+whether the tab is *read-only*.
+- See also: `set_rpc_cellfocus!`, `Olive`, `build_tab`
+"""
 function build_base_rpc_tab(c::Connection, p::Project{<:Any}, ro::Bool = false; hidden::Bool = false)
     fname::String = p.id
     tabbody::Component{:div} = div("tab$(fname)", class = "tabopen")
@@ -301,6 +317,22 @@ function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}
     do_inner_rpc_highlight(OliveHighlighters.mark_julia!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["julia"])
 end
 
+"""
+```julia
+do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, 
+        cm::ComponentModifier, tm::Olive.Highlighter) -> ::Nothing
+```
+This is a convenience function that can be used to implement collaborative highlighting for any cell with 
+    `OliveHighlighters`. We provide the highlighter itself and the function to mark it (the first argument) 
+    and this function will automatically mark it on our current page. This would be called in `cell_highlight!`, 
+        for instance this is how it is done with Julia:
+```julia
+function cell_highlight!(c::Connection, cm::ComponentModifier, cell::Cell{:code}, proj::Project{:rpc})
+    do_inner_rpc_highlight(OliveHighlighters.mark_julia!, c, proj, cell, cm, c[:OliveCore].users[getname(c)].data["highlighters"]["julia"])
+end
+```
+- See also: `OliveCollaborate`, `Collaborator`
+"""
 function do_inner_rpc_highlight(f::Function, c::AbstractConnection, proj::Project{<:Any}, cell::Cell{<:Any}, 
         cm::ComponentModifier, tm::Olive.Highlighter)
     windowname::String = proj.id

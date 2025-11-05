@@ -157,7 +157,7 @@ end
 
 """
 ```julia
-make_collab_str(args ...)
+make_collab_str(args ...) -> ::String
 ```
 Makes a collaborator string from collaborator details provided as either a `String` or a full 
 constructed `Collaborator`.
@@ -171,7 +171,7 @@ make_collab_str(co::Collaborator) = "$(co.name)|$(co.connected)|$(co.perm)|$(co.
 
 """
 ```julia
-get_collaborator_data(args ...)
+get_collaborator_data(args ...) -> ::Collaborator
 ```
 Gets the collaborator's data, as a `Collaborator`, from the cell's outputs -- this cell will be the first 
 cell in the `:collab` project. We can get the `Collaborator` data directly from that cell, or by by providing 
@@ -181,7 +181,7 @@ The second `Method` below **calls the first** and acts as a more convenient acce
 get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
 get_collaborator_data(c::Connection, proj::Project{<:Any}, name::String = getname(c))
 ```
-- See also: `get_collaborator_data`, `set_collaborator_data!`, `Collaborator`
+- See also: `set_collaborator_data!`, `Collaborator`, `mutate_collab_data!`
 """
 function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
     splitinfo = split(cell.outputs, ";")
@@ -192,6 +192,18 @@ function get_collaborator_data(cell::Cell{<:Any}, name::AbstractString)
     Collaborator(split(splitinfo[just_me], "|"))::Collaborator
 end
 
+"""
+```julia
+set_collaborator_data!(args ...) -> ::
+```
+Sets the `Collaborator` data using a `Collaborator` struct. Can be done from the project or directly from the `:collab` project's 
+first cell. The second dispatch, like the case of `get_collaborator_data`, calls the first dispatch.
+```julia
+set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Collaborator)
+set_collaborator_data!(c::Connection, proj::Project{<:Any}, collab::Collaborator, name::String = getname(c))
+```
+- See also: `get_collaborator_data`, `Collaborator`
+"""
 function set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Collaborator)
     splitinfo = split(cell.outputs, ";")
     just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
@@ -200,6 +212,20 @@ function set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Co
     nothing::Nothing
 end
 
+
+"""
+```julia
+mutate_collab_data!(args ...) -> ::Nothing
+```
+A shorthand for get/set collaborator data which will get and set automatically. This would be equivalent to 
+    pulling the collaborator with `get_collaborator_data` and then updating it with `set_collaborator_data!`, 
+    only this function performs that operation more efficiently.
+```julia
+set_collaborator_data!(cell::Cell{<:Any}, name::AbstractString, col::Collaborator)
+set_collaborator_data!(c::Connection, proj::Project{<:Any}, collab::Collaborator, name::String = getname(c))
+```
+- See also: `get_collaborator_data`, `Collaborator`, `set_collaborator_data!`
+"""
 mutate_collab_data!(f::Function, cell::Cell{<:Any}, name::String) = begin
     splitinfo = split(cell.outputs, ";")
     just_me = findfirst(s -> split(s, "|")[1] == name, splitinfo)
@@ -207,6 +233,7 @@ mutate_collab_data!(f::Function, cell::Cell{<:Any}, name::String) = begin
     f(col)
     splitinfo[just_me] = make_collab_str(col)
     cell.outputs = join(splitinfo, ";")
+    nothing::Nothing
 end
 
 function get_collaborator_data(c::Connection, proj::Project{<:Any}, name::String = getname(c))
@@ -253,7 +280,15 @@ end
 #==
 rpcinfo
 ==#
-
+"""
+```julia
+build_collab_preview(c::Connection, cm::ComponentModifier, source::String, proj::Project{<:Any}, fweight ...; 
+    ignorefirst::Bool = false) -> ::Vector{Component{:div}}
+```
+Builds collaborator box to present current collaborators in a `:collab` `Project`. This is used to build 
+the interior of the `:collab` cell within that project.
+- See also: `Collaborator`, `build_collab_edit`
+"""
 function build_collab_preview(c::Connection, cm::ComponentModifier, source::String, proj::Project{<:Any}, fweight ...; 
     ignorefirst::Bool = false)
     first_person::Bool = true
@@ -318,6 +353,14 @@ function build_collab_preview(c::Connection, cm::ComponentModifier, source::Stri
     end for person in split(source, ";")]
 end
 
+"""
+```julia
+build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any}, fweight ...) -> ::Component{:div}
+```
+Similar to `build_collab_preview`, only this function builds the bottom of trhe `:collab` cell, where new users are 
+added and the session can be turned on.
+- See also: `Collaborator`, `build_collab_preview`
+"""
 function build_collab_edit(c::Connection, cm::ComponentModifier, cell::Cell{:collab}, proj::Project{<:Any}, fweight ...)
     add_person = div("addcollab", align = "right")
     style!(add_person, "padding" => 0px, "border-radius" => 0px, "display" => "flex", "min-width" => 100percent, 

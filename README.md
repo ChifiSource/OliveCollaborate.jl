@@ -4,7 +4,7 @@
 - **collaborative sessions for olive!**
 - [documentation](https://chifidocs.com/olive/OliveCollaborate.jl)
 
-`OliveCollaborate` provides *multi-user RPC sessions* for `Olive` notebooks. This functionality gives users connected to the same server the ability to share their sessions actively -- as one user modifies the project, the project updates for everyone else viewing the project. This project is still in *relatively early* development, but is coming surprisingly soon!
+`OliveCollaborate` provides *multi-user RPC sessions* for `Olive` notebooks. This functionality gives users connected to the same server the ability to share their sessions actively -- as one user modifies the project, the project updates for everyone else viewing the project.
 ##### notes
 - This extension will only allow you to share with other users via LAN or your own networking. (A tunneling service through the `OliveCreator` website may eventually exist.)
 - You can remove the `collaborate` icon  by adding `collabicon = false` to your `OliveCore`. The user addition system is slightly mutable, as we can change how users are added by creating our user-addition own cell type and path to adding the collaborate project. More information in [adding users](#adding-users).
